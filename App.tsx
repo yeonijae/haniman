@@ -262,7 +262,6 @@ const App: React.FC = () => {
 
     if (destination === 'treatment') {
       patients.addToTreatmentList(patient, '진료완료');
-      alert(`${patient.name}님을 치료 대기 목록으로 이동했습니다.`);
     } else {
       await paymentsHook.createPayment(patient, '진료비');
       alert(`${patient.name}님을 수납 대기 목록으로 이동했습니다.`);
@@ -338,7 +337,6 @@ const App: React.FC = () => {
       alert(`${patientInfo.name}님을 진료 대기 목록으로 이동했습니다.`);
     } else {
       patients.addToTreatmentList(patientInfo, '수납->치료');
-      alert(`${patientInfo.name}님을 치료 대기 목록으로 이동했습니다.`);
     }
   };
 
