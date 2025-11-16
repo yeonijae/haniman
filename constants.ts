@@ -122,7 +122,8 @@ export const MEDICAL_STAFF_LIST: MedicalStaff[] = [
     permissions: { prescription: true, chart: true, payment: true, statistics: true },
     workPatterns: [
       { id: 'wp1-1', days: [true, true, true, true, true, false, false], startDate: '2010-03-01', endDate: '2024-12-31' }
-    ]
+    ],
+    consultationRoom: '1진료실'
   },
   {
     id: 2,
@@ -135,7 +136,8 @@ export const MEDICAL_STAFF_LIST: MedicalStaff[] = [
     workPatterns: [
         { id: 'wp2-1', days: [false, true, false, true, false, true, false], startDate: '2015-09-01', endDate: '2023-12-31' },
         { id: 'wp2-2', days: [true, true, true, true, true, false, false], startDate: '2024-01-01', endDate: '2025-12-31' }
-    ]
+    ],
+    consultationRoom: '2진료실'
   },
   {
     id: 3,
@@ -148,7 +150,8 @@ export const MEDICAL_STAFF_LIST: MedicalStaff[] = [
     permissions: { prescription: true, chart: true, payment: false, statistics: false },
     workPatterns: [
         { id: 'wp3-1', days: [true, true, true, true, true, true, false], startDate: '2020-01-15', endDate: '2023-12-31' }
-    ]
+    ],
+    consultationRoom: '3진료실'
   },
 ];
 

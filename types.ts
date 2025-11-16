@@ -177,6 +177,7 @@ export interface MedicalStaff {
   status: 'working' | 'retired';
   permissions: MedicalStaffPermissions;
   workPatterns: WorkPattern[];
+  consultationRoom?: string | null; // 진료실 (1진료실, 2진료실, 3진료실, 4진료실)
 }
 
 export interface StaffPermissions {

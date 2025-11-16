@@ -583,6 +583,7 @@ export async function fetchMedicalStaff(): Promise<MedicalStaff[]> {
     status: staff.status,
     permissions: staff.permissions,
     workPatterns: staff.work_patterns,
+    consultationRoom: staff.consultation_room,
   }));
 }
 
@@ -599,6 +600,7 @@ export async function createMedicalStaff(staff: Omit<MedicalStaff, 'id'>): Promi
       status: staff.status,
       permissions: staff.permissions,
       work_patterns: staff.workPatterns,
+      consultation_room: staff.consultationRoom || null,
     })
     .select()
     .single();
@@ -618,6 +620,7 @@ export async function createMedicalStaff(staff: Omit<MedicalStaff, 'id'>): Promi
     status: data.status,
     permissions: data.permissions,
     workPatterns: data.work_patterns,
+    consultationRoom: data.consultation_room,
   };
 }
 
@@ -633,6 +636,7 @@ export async function updateMedicalStaff(staffId: number, updates: Partial<Medic
   if (updates.status !== undefined) dbUpdates.status = updates.status;
   if (updates.permissions !== undefined) dbUpdates.permissions = updates.permissions;
   if (updates.workPatterns !== undefined) dbUpdates.work_patterns = updates.workPatterns;
+  if (updates.consultationRoom !== undefined) dbUpdates.consultation_room = updates.consultationRoom || null;
 
   const { error } = await supabase
     .from('medical_staff')

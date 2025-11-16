@@ -243,6 +243,7 @@ const MedicalStaffManagement: React.FC<{
         status: 'working',
         permissions: { prescription: false, chart: false, payment: false, statistics: false },
         workPatterns: [],
+        consultationRoom: null,
     });
     const [newPattern, setNewPattern] = useState({
         days: [false, false, false, false, false, false, false], // Mon to Sun
@@ -269,6 +270,7 @@ const MedicalStaffManagement: React.FC<{
                 status: 'working',
                 permissions: { prescription: true, chart: true, payment: false, statistics: false },
                 workPatterns: [],
+                consultationRoom: null,
             });
         }
     }, [editingStaff]);
@@ -425,7 +427,24 @@ const MedicalStaffManagement: React.FC<{
                         <input type="date" id="fireDate" name="fireDate" value={formData.fireDate || ''} onChange={handleFormChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-clinic-secondary focus:border-clinic-secondary sm:text-sm" />
                     </div>
 
-                    <div className="md:col-span-2">
+                    <div>
+                        <label htmlFor="consultationRoom" className="block text-sm font-medium text-gray-700">진료실</label>
+                        <select
+                            id="consultationRoom"
+                            name="consultationRoom"
+                            value={formData.consultationRoom || ''}
+                            onChange={handleFormChange}
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-clinic-secondary focus:border-clinic-secondary sm:text-sm"
+                        >
+                            <option value="">선택 안 함</option>
+                            <option value="1진료실">1진료실</option>
+                            <option value="2진료실">2진료실</option>
+                            <option value="3진료실">3진료실</option>
+                            <option value="4진료실">4진료실</option>
+                        </select>
+                    </div>
+
+                    <div>
                         <label className="block text-sm font-medium text-gray-700">접근권한</label>
                         <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-4 p-4 border rounded-md bg-white">
                             {permissions.map(p => (
