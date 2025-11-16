@@ -15,7 +15,6 @@ export const ALL_PATIENTS: Patient[] = [
     { id: 3, name: '박하준', chartNumber: 'C003', time: '11:00', status: PatientStatus.RESERVED, details: '재진', dob: '1978-11-02', gender: 'male', phone: '010-5555-6666', address: '경기도 성남시 분당구 판교역로 789', referralPath: '블로그', registrationDate: '2023-03-05' },
     { id: 4, name: '최지우', chartNumber: 'C004', time: '11:30', status: PatientStatus.RESERVED, details: '초진', dob: '2001-01-20', gender: 'female', phone: '010-7777-8888', address: '인천광역시 연수구 송도국제대로 123', referralPath: '인스타그램', registrationDate: '2023-04-12', defaultTreatments: [{ name: '견인', duration: 10, memo: '목 디스크' }, { name: '초음파', duration: 5, memo: '오른쪽 손목'}, { name: '충격파', duration: 20, memo: '어깨 회전근' }] },
     { id: 5, name: '정시우', chartNumber: 'C005', time: '14:00', status: PatientStatus.RESERVED, details: '재진', dob: '1995-05-10', gender: 'male', phone: '010-9999-0000', address: '서울시 마포구 월드컵북로 456', referralPath: '지인소개', registrationDate: '2023-05-18' },
-    { id: 6, name: '윤채원', chartNumber: 'C006', time: '09:45', status: PatientStatus.WAITING_CONSULTATION, details: '접수완료', dob: '1988-09-08', gender: 'female', phone: '010-1234-5678', address: '서울시 용산구 한강대로 100', referralPath: '간판보고', registrationDate: '2023-06-21' },
     { id: 7, name: '강지호', chartNumber: 'C007', time: '10:05', status: PatientStatus.WAITING_TREATMENT, details: '진료완료', dob: '1999-12-25', gender: 'male', phone: '010-8765-4321', address: '경기도 수원시 영통구 광교중앙로 240', referralPath: '맘카페', registrationDate: '2023-07-30' },
     { id: 8, name: '송예나', chartNumber: 'C008', time: '10:10', status: PatientStatus.WAITING_TREATMENT, details: '진료완료', dob: '2005-04-03', gender: 'female', phone: '010-5678-1234', address: '서울시 강동구 천호대로 1000', referralPath: '유튜브', registrationDate: '2023-08-01' },
     { id: 9, name: '박서준', chartNumber: 'C009', time: '10:20', status: PatientStatus.IN_TREATMENT, details: '치료중', dob: '1982-02-18', gender: 'male', phone: '010-2468-1357', address: '서울시 송파구 올림픽로 300', referralPath: '지역광고', registrationDate: '2023-09-15', defaultTreatments: [{ name: '초음파', duration: 10, memo: '허리 3,4번' }, { name: '침', duration: 15, memo: '목 주변' }, { name: '충격파', duration: 15, memo: '오른쪽 어깨' }] },
@@ -44,8 +43,7 @@ export const RESERVATIONS: Patient[] = [
   { id: 5, name: '정시우', chartNumber: 'C005', time: '14:00', status: PatientStatus.RESERVED, details: '재진' },
 ];
 
-export const CONSULTATION_WAITING_LIST: Patient[] = ALL_PATIENTS.filter(p => [6, 1].includes(p.id)).map(p => {
-    if (p.id === 6) return { ...p, status: PatientStatus.WAITING_CONSULTATION, time: '09:45', details: '접수완료' };
+export const CONSULTATION_WAITING_LIST: Patient[] = ALL_PATIENTS.filter(p => [1].includes(p.id)).map(p => {
     if (p.id === 1) return { ...p, status: PatientStatus.WAITING_CONSULTATION, time: '10:00', details: '예약환자' };
     return p;
 });
@@ -57,7 +55,7 @@ export const TREATMENT_WAITING_LIST: Patient[] = ALL_PATIENTS.filter(p => [7, 8]
 });
 
 export const CONSULTATION_ROOMS: ConsultationRoom[] = [
-  { id: 1, roomName: '1진료실', doctorName: '김경희 원장', status: 'in_consultation', patientId: 6, patientName: '윤채원', patientDetails: '초진 | 접수완료' },
+  { id: 1, roomName: '1진료실', doctorName: '김경희 원장', status: 'available' },
   { id: 2, roomName: '2진료실', doctorName: '이수진 원장', status: 'waiting', patientId: 1, patientName: '김민준', patientDetails: '재진 | 예약환자' },
   { id: 3, roomName: '3진료실', doctorName: '박지훈 원장', status: 'available' },
   { id: 4, roomName: '4진료실', doctorName: '미지정', status: 'available' },
