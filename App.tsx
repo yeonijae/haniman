@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import Header, { ModalType, ViewType } from './components/Header';
 import ReservationStatus from './components/ReservationStatus';
 import ConsultationStatus from './components/ConsultationStatus';
@@ -431,6 +431,35 @@ const App: React.FC = () => {
         return null;
     }
   };
+
+  // Prevent browser back navigation on Backspace key (except in text input fields)
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Check if Backspace key is pressed
+      if (event.key === 'Backspace' || event.keyCode === 8) {
+        const target = event.target as HTMLElement;
+
+        // Allow backspace in editable elements
+        const isEditable =
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable;
+
+        // If not in an editable element, prevent default (browser back navigation)
+        if (!isEditable) {
+          event.preventDefault();
+        }
+      }
+    };
+
+    // Add event listener
+    document.addEventListener('keydown', handleKeyDown);
+
+    // Cleanup
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   // Login Guard
   if (!currentUser) {
