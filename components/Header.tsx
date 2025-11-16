@@ -68,14 +68,17 @@ const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="bg-clinic-surface shadow-md flex items-center justify-between p-4 flex-shrink-0">
-      <div 
+      <div
         className="flex items-center cursor-pointer"
         onClick={() => onNavigate('dashboard')}
         role="button"
         aria-label="메인 대시보드로 이동"
       >
         <i className="fas fa-clinic-medical text-3xl text-clinic-primary mr-3"></i>
-        <h1 className="text-2xl font-bold text-clinic-primary">연이재한의원 관리 시스템</h1>
+        <div className="flex flex-col">
+          <h1 className="text-2xl font-bold text-clinic-primary">운영 관리 시스템</h1>
+          <p className="text-xs text-gray-400 -mt-0.5">연이재한의원</p>
+        </div>
       </div>
       <div className="flex items-center space-x-4">
         <nav className="flex items-center space-x-2">
