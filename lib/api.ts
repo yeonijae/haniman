@@ -948,14 +948,6 @@ export async function updateTreatmentRoom(roomId: number, room: Partial<Treatmen
       }
     }
   }
-
-  const elapsed = Date.now() - startTime;
-  console.log(`⚡ updateTreatmentRoom 완료 (${elapsed}ms):`, {
-    roomId,
-    hasRoomUpdate,
-    hasTreatmentsUpdate: room.sessionTreatments !== undefined && room.sessionId !== undefined,
-    treatmentCount: room.sessionTreatments?.length || 0
-  });
 }
 
 // 세션 치료 항목 업데이트 (UPSERT 사용으로 성능 개선)
@@ -1015,12 +1007,6 @@ async function updateSessionTreatments(sessionId: string, roomId: number, treatm
     console.error('세션 치료 항목 정리 오류:', deleteError);
     // 에러가 나도 계속 진행 (삭제된 항목이 없을 수 있음)
   }
-
-  const elapsed = Date.now() - startTime;
-  console.log(`⚡ DB 저장 완료 (${elapsed}ms):`, {
-    sessionId,
-    treatmentCount: treatments.length
-  });
 }
 
 // 치료실 초기화 (환자 배정 해제)
@@ -1202,8 +1188,6 @@ export async function deleteTreatmentItem(id: number): Promise<void> {
     console.error('❌ 삭제 실패:', permissionError.message);
     throw permissionError;
   }
-
-  console.log('✅ 치료항목 삭제 성공:', data);
 }
 
 // 치료항목 순서 일괄 업데이트
@@ -1223,6 +1207,4 @@ export async function updateTreatmentItemsOrder(items: Array<{ id: number; displ
     console.error('❌ 치료항목 순서 업데이트 오류:', errors);
     throw errors[0];
   }
-
-  console.log('✅ 치료항목 순서 업데이트 성공');
 }

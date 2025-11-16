@@ -72,25 +72,6 @@ const useTimer = (treatment: SessionTreatment) => {
             const clampedElapsed = Math.max(0, Math.min(totalSeconds, elapsed));
             const calculatedRemaining = totalSeconds - clampedElapsed;
 
-            // 디버깅 로그
-            if (treatment.status === 'running' || treatment.status === 'paused') {
-                console.log('🔍 타이머 계산:', {
-                    name: treatment.name,
-                    id: treatment.id,
-                    status: treatment.status,
-                    duration: `${treatment.duration}분`,
-                    totalSeconds: `${totalSeconds}초`,
-                    startTime: treatment.startTime,
-                    elapsedSeconds: treatment.elapsedSeconds,
-                    currentSessionElapsed: `${currentSessionElapsed.toFixed(1)}초`,
-                    totalElapsed: `${elapsed.toFixed(1)}초`,
-                    clampedElapsed: `${clampedElapsed.toFixed(1)}초`,
-                    remainingSeconds: `${calculatedRemaining.toFixed(1)}초`,
-                    progress: `${((clampedElapsed / totalSeconds) * 100).toFixed(1)}%`,
-                    isFinished: calculatedRemaining <= 0
-                });
-            }
-
             setRemainingSeconds(calculatedRemaining);
             setProgress((clampedElapsed / totalSeconds) * 100);
         };
@@ -554,7 +535,6 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                         elapsedSeconds: 0,
                         memo: 'memo' in dt ? dt.memo : undefined,
                     };
-                    console.log('🆕 새 치료 항목 생성:', newTreatment);
                     return newTreatment;
                 });
 
@@ -611,16 +591,6 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                             // elapsedSeconds는 이전에 누적된 시간 (paused였다면)
                             const newStartTime = new Date().toISOString();
                             const newElapsedSeconds = tx.status === 'paused' ? (tx.elapsedSeconds || 0) : 0;
-                            console.log('▶️ 타이머 시작:', {
-                                name: tx.name,
-                                id: tx.id,
-                                previousStatus: tx.status,
-                                newStatus: 'running',
-                                duration: `${tx.duration}분`,
-                                newStartTime,
-                                newElapsedSeconds: `${newElapsedSeconds}초`,
-                                willSaveDB: shouldSave
-                            });
                             return {
                                 ...tx,
                                 status: 'running' as const,
@@ -632,14 +602,6 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                             // 실행 → 일시정지: 경과 시간을 누적하여 저장
                             const currentElapsed = (Date.now() - new Date(tx.startTime).getTime()) / 1000;
                             const totalElapsed = Math.round((tx.elapsedSeconds || 0) + currentElapsed);
-                            console.log('⏸️ 타이머 정지:', {
-                                name: tx.name,
-                                id: tx.id,
-                                currentElapsed: `${currentElapsed.toFixed(1)}초`,
-                                previousElapsedSeconds: `${tx.elapsedSeconds || 0}초`,
-                                totalElapsed: `${totalElapsed}초`,
-                                willSaveDB: shouldSave
-                            });
                             return {
                                 ...tx,
                                 status: 'paused' as const,
@@ -647,11 +609,9 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                                 startTime: null
                             };
                         case 'complete':
-                            console.log('✅ 타이머 완료:', { name: tx.name, id: tx.id });
                             // 완료: 모두 초기화
                             return { ...tx, status: 'completed' as const, startTime: null, elapsedSeconds: 0 };
                         case 'reset':
-                            console.log('🔄 타이머 리셋:', { name: tx.name, id: tx.id });
                             // 리셋: 대기 상태로, 모두 초기화
                             return { ...tx, status: 'pending' as const, startTime: null, elapsedSeconds: 0 };
                     }

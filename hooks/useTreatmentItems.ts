@@ -85,7 +85,6 @@ export const useTreatmentItems = (currentUser: any) => {
       }));
 
       await api.updateTreatmentItemsOrder(orderUpdates);
-      console.log('✅ 치료항목 순서 변경 완료');
     } catch (error) {
       console.error('❌ 치료항목 순서 변경 오류:', error);
       alert('순서 변경 중 오류가 발생했습니다. 페이지를 새로고침하세요.');
