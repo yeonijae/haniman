@@ -22,14 +22,6 @@ export const useTreatmentRooms = (currentUser: any) => {
               // 다른 클라이언트에서 시작한 타이머: running 상태 유지, startTime만 현재로 갱신
               const newStartTime = new Date().toISOString();
 
-              console.log('🔄 DB running 타이머 로컬 시간으로 동기화:', {
-                name: tx.name,
-                id: tx.id,
-                oldStartTime: tx.startTime,
-                newStartTime,
-                elapsedSeconds: tx.elapsedSeconds
-              });
-
               return {
                 ...tx,
                 status: 'running' as const,
@@ -74,32 +66,17 @@ export const useTreatmentRooms = (currentUser: any) => {
 
                     // 로컬 running + DB도 running → 로컬 상태 유지 (자신이 실행 중)
                     if (oldTx?.status === 'running' && oldTx.startTime && newTx.status === 'running') {
-                      console.log('✅ 로컬 running 타이머 보존:', { name: oldTx.name, id: oldTx.id });
                       return oldTx;
                     }
 
                     // 로컬 running + DB는 paused/completed → DB 상태 우선 (다른 클라이언트가 변경)
                     if (oldTx?.status === 'running' && (newTx.status === 'paused' || newTx.status === 'completed')) {
-                      console.log('⏸️ DB 상태로 동기화:', {
-                        name: newTx.name,
-                        id: newTx.id,
-                        oldStatus: oldTx.status,
-                        newStatus: newTx.status
-                      });
                       return newTx;
                     }
 
                     // DB에서 running으로 온 데이터는 running 상태 유지, startTime만 현재로 갱신
                     if (newTx.status === 'running' && newTx.startTime) {
                       const newStartTime = new Date().toISOString();
-
-                      console.log('🔄 DB running 타이머 로컬 시간으로 동기화:', {
-                        name: newTx.name,
-                        id: newTx.id,
-                        oldStartTime: newTx.startTime,
-                        newStartTime,
-                        elapsedSeconds: newTx.elapsedSeconds
-                      });
 
                       return {
                         ...newTx,
@@ -172,8 +149,6 @@ export const useTreatmentRooms = (currentUser: any) => {
     const startTime = Date.now();
     try {
       await api.updateTreatmentRoom(roomId, room);
-      const elapsed = Date.now() - startTime;
-      console.log(`✅ 치료실 DB 저장 완료 (${elapsed}ms):`, roomId);
     } catch (error) {
       console.error('❌ 치료실 DB 저장 오류:', error);
     }
