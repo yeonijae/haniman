@@ -1116,7 +1116,8 @@ export async function fetchTreatmentItems(): Promise<TreatmentItem[]> {
   const { data, error } = await supabase
     .from('treatment_items')
     .select('*')
-    .order('name');
+    .order('display_order', { ascending: true })
+    .order('id', { ascending: true });
 
   if (error) {
     console.error('치료항목 조회 오류:', error);
@@ -1126,7 +1127,8 @@ export async function fetchTreatmentItems(): Promise<TreatmentItem[]> {
   return (data || []).map(item => ({
     id: item.id,
     name: item.name,
-    defaultDuration: item.default_duration
+    defaultDuration: item.default_duration,
+    displayOrder: item.display_order ?? 0
   }));
 }
 
@@ -1136,7 +1138,8 @@ export async function createTreatmentItem(item: Omit<TreatmentItem, 'id'>): Prom
     .from('treatment_items')
     .insert({
       name: item.name,
-      default_duration: item.defaultDuration
+      default_duration: item.defaultDuration,
+      display_order: item.displayOrder
     })
     .select()
     .single();
@@ -1149,7 +1152,8 @@ export async function createTreatmentItem(item: Omit<TreatmentItem, 'id'>): Prom
   return {
     id: data.id,
     name: data.name,
-    defaultDuration: data.default_duration
+    defaultDuration: data.default_duration,
+    displayOrder: data.display_order ?? 0
   };
 }
 
@@ -1159,7 +1163,8 @@ export async function updateTreatmentItem(id: number, item: Omit<TreatmentItem, 
     .from('treatment_items')
     .update({
       name: item.name,
-      default_duration: item.defaultDuration
+      default_duration: item.defaultDuration,
+      display_order: item.displayOrder
     })
     .eq('id', id)
     .select()
@@ -1173,7 +1178,8 @@ export async function updateTreatmentItem(id: number, item: Omit<TreatmentItem, 
   return {
     id: data.id,
     name: data.name,
-    defaultDuration: data.default_duration
+    defaultDuration: data.default_duration,
+    displayOrder: data.display_order ?? 0
   };
 }
 
@@ -1198,4 +1204,25 @@ export async function deleteTreatmentItem(id: number): Promise<void> {
   }
 
   console.log('✅ 치료항목 삭제 성공:', data);
+}
+
+// 치료항목 순서 일괄 업데이트
+export async function updateTreatmentItemsOrder(items: Array<{ id: number; displayOrder: number }>): Promise<void> {
+  // 각 항목을 순차적으로 업데이트
+  const updatePromises = items.map(item =>
+    supabase
+      .from('treatment_items')
+      .update({ display_order: item.displayOrder })
+      .eq('id', item.id)
+  );
+
+  const results = await Promise.all(updatePromises);
+
+  const errors = results.filter(r => r.error).map(r => r.error);
+  if (errors.length > 0) {
+    console.error('❌ 치료항목 순서 업데이트 오류:', errors);
+    throw errors[0];
+  }
+
+  console.log('✅ 치료항목 순서 업데이트 성공');
 }

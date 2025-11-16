@@ -416,6 +416,7 @@ const App: React.FC = () => {
           addTreatmentItem={treatmentItemsHook.addTreatmentItem}
           updateTreatmentItem={treatmentItemsHook.updateTreatmentItem}
           deleteTreatmentItem={treatmentItemsHook.deleteTreatmentItem}
+          reorderTreatmentItems={treatmentItemsHook.reorderTreatmentItems}
         />;
       case 'editActing':
         return actingToEdit ? (

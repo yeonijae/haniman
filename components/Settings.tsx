@@ -37,6 +37,7 @@ interface SettingsProps {
     addTreatmentItem: (item: Omit<TreatmentItem, 'id'>) => void;
     updateTreatmentItem: (id: number, item: Omit<TreatmentItem, 'id'>) => void;
     deleteTreatmentItem: (id: number) => void;
+    reorderTreatmentItems: (items: TreatmentItem[]) => void;
 }
 
 const DetailItem: React.FC<{ label: string; value?: string }> = ({ label, value }) => (
@@ -879,10 +880,12 @@ const TreatmentItemsManagement: React.FC<{
     addTreatmentItem: (item: Omit<TreatmentItem, 'id'>) => void;
     updateTreatmentItem: (id: number, item: Omit<TreatmentItem, 'id'>) => void;
     deleteTreatmentItem: (id: number) => void;
-}> = ({ treatmentItems, addTreatmentItem, updateTreatmentItem, deleteTreatmentItem }) => {
+    reorderTreatmentItems: (items: TreatmentItem[]) => void;
+}> = ({ treatmentItems, addTreatmentItem, updateTreatmentItem, deleteTreatmentItem, reorderTreatmentItems }) => {
     const [editingItem, setEditingItem] = useState<TreatmentItem | null>(null);
     const [showAddModal, setShowAddModal] = useState(false);
     const [formData, setFormData] = useState({ name: '', defaultDuration: 30 });
+    const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
     const handleAdd = () => {
         if (!formData.name.trim()) {
@@ -913,10 +916,39 @@ const TreatmentItemsManagement: React.FC<{
         }
         updateTreatmentItem(editingItem.id, {
             name: formData.name,
-            defaultDuration: formData.defaultDuration
+            defaultDuration: formData.defaultDuration,
+            displayOrder: editingItem.displayOrder
         });
         setEditingItem(null);
         setFormData({ name: '', defaultDuration: 30 });
+    };
+
+    // 드래그앤드롭 핸들러
+    const handleDragStart = (index: number) => {
+        setDraggedIndex(index);
+    };
+
+    const handleDragOver = (e: React.DragEvent, index: number) => {
+        e.preventDefault();
+    };
+
+    const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+        e.preventDefault();
+        if (draggedIndex === null || draggedIndex === dropIndex) {
+            setDraggedIndex(null);
+            return;
+        }
+
+        const reorderedItems = [...treatmentItems];
+        const [draggedItem] = reorderedItems.splice(draggedIndex, 1);
+        reorderedItems.splice(dropIndex, 0, draggedItem);
+
+        reorderTreatmentItems(reorderedItems);
+        setDraggedIndex(null);
+    };
+
+    const handleDragEnd = () => {
+        setDraggedIndex(null);
     };
 
     const handleDelete = (id: number) => {
@@ -954,6 +986,8 @@ const TreatmentItemsManagement: React.FC<{
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                             <tr>
+                                <th className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-10">
+                                </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                     치료항목명
                                 </th>
@@ -968,13 +1002,26 @@ const TreatmentItemsManagement: React.FC<{
                         <tbody className="bg-white divide-y divide-gray-200">
                             {treatmentItems.length === 0 ? (
                                 <tr>
-                                    <td colSpan={3} className="px-6 py-4 text-center text-gray-500">
+                                    <td colSpan={4} className="px-6 py-4 text-center text-gray-500">
                                         등록된 치료항목이 없습니다.
                                     </td>
                                 </tr>
                             ) : (
-                                treatmentItems.map(item => (
-                                    <tr key={item.id}>
+                                treatmentItems.map((item, index) => (
+                                    <tr
+                                        key={item.id}
+                                        draggable
+                                        onDragStart={() => handleDragStart(index)}
+                                        onDragOver={(e) => handleDragOver(e, index)}
+                                        onDrop={(e) => handleDrop(e, index)}
+                                        onDragEnd={handleDragEnd}
+                                        className={`cursor-move transition-colors ${
+                                            draggedIndex === index ? 'opacity-50 bg-gray-100' : 'hover:bg-gray-50'
+                                        }`}
+                                    >
+                                        <td className="px-2 py-4 text-center text-gray-400">
+                                            <i className="fa-solid fa-grip-vertical"></i>
+                                        </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                             {item.name}
                                         </td>
@@ -1510,7 +1557,7 @@ const Settings: React.FC<SettingsProps> = ({
     medicalStaff, updateMedicalStaff, addMedicalStaff, deleteMedicalStaff,
     staff, updateStaff, addStaff, deleteStaff,
     uncoveredCategories, updateUncoveredCategories,
-    treatmentItems, addTreatmentItem, updateTreatmentItem, deleteTreatmentItem
+    treatmentItems, addTreatmentItem, updateTreatmentItem, deleteTreatmentItem, reorderTreatmentItems
 }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
@@ -1785,6 +1832,7 @@ const Settings: React.FC<SettingsProps> = ({
                     addTreatmentItem={addTreatmentItem}
                     updateTreatmentItem={updateTreatmentItem}
                     deleteTreatmentItem={deleteTreatmentItem}
+                    reorderTreatmentItems={reorderTreatmentItems}
                 />
             </SettingsPage>
         );

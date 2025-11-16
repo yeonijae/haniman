@@ -20,6 +20,7 @@ export interface TreatmentItem {
   id: number;
   name: string;
   defaultDuration: number; // in minutes
+  displayOrder: number; // for drag and drop ordering
 }
 
 export interface Patient {
