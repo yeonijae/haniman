@@ -64,12 +64,18 @@ const WaitingListItem: React.FC<{
         }
     };
 
-    const handleContextMenu = (event: React.MouseEvent) => {
+    const handleNameClick = (event: React.MouseEvent) => {
         if (!onMoveToPayment) return;
-        
+
         event.preventDefault();
         event.stopPropagation();
-        setContextMenu({ x: event.clientX, y: event.clientY });
+
+        // Toggle context menu on name click
+        if (contextMenu) {
+            setContextMenu(null);
+        } else {
+            setContextMenu({ x: event.clientX, y: event.clientY });
+        }
     };
 
     const handleMoveToPaymentClick = () => {
@@ -93,10 +99,8 @@ const WaitingListItem: React.FC<{
     
     return (
         <>
-            <li 
+            <li
                 className="flex justify-between items-center p-3 hover:bg-blue-50 rounded-md cursor-pointer transition-colors duration-150"
-                onClick={() => onClick(patient)}
-                onContextMenu={handleContextMenu}
                 draggable="true"
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
@@ -105,7 +109,12 @@ const WaitingListItem: React.FC<{
                 onDrop={handleDrop}
             >
                 <div>
-                <span className="font-bold text-clinic-text-primary">{patient.name}</span>
+                <span
+                    className="font-bold text-clinic-text-primary cursor-pointer hover:text-clinic-primary"
+                    onClick={handleNameClick}
+                >
+                    {patient.name}
+                </span>
                 <span className="text-sm text-clinic-text-secondary ml-2">{patient.details}</span>
                 </div>
                 <span className="text-sm text-gray-500">{patient.time}</span>

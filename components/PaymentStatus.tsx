@@ -23,9 +23,16 @@ const PaymentCard: React.FC<PaymentCardProps> = ({ payment, onPaymentClick, onRe
     
     const buttonBaseClasses = "w-16 h-10 text-white text-sm font-semibold rounded-md transition-colors flex items-center justify-center";
 
-    const handleContextMenu = (event: React.MouseEvent) => {
+    const handleNameClick = (event: React.MouseEvent) => {
         event.preventDefault();
-        setContextMenu({ x: event.clientX, y: event.clientY });
+        event.stopPropagation();
+
+        // Toggle context menu on name click
+        if (contextMenu) {
+            setContextMenu(null);
+        } else {
+            setContextMenu({ x: event.clientX, y: event.clientY });
+        }
     };
 
     const handleMoveClick = (destination: 'consultation' | 'treatment') => {
@@ -47,12 +54,16 @@ const PaymentCard: React.FC<PaymentCardProps> = ({ payment, onPaymentClick, onRe
 
     return (
         <>
-            <div 
-                className="w-full text-left p-3 bg-white rounded-md mb-2 border border-gray-200 flex justify-between items-center cursor-pointer"
-                onContextMenu={handleContextMenu}
+            <div
+                className="w-full text-left p-3 bg-white rounded-md mb-2 border border-gray-200 flex justify-between items-center"
             >
                 <div>
-                    <p className="font-bold text-base text-clinic-text-primary">{payment.patientName}</p>
+                    <p
+                        className="font-bold text-base text-clinic-text-primary cursor-pointer hover:text-clinic-primary"
+                        onClick={handleNameClick}
+                    >
+                        {payment.patientName}
+                    </p>
                     <p className="text-sm text-clinic-text-secondary">{payment.details}</p>
                 </div>
                 <div className="flex items-center space-x-2 flex-shrink-0">
