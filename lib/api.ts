@@ -592,9 +592,9 @@ export async function createMedicalStaff(staff: Omit<MedicalStaff, 'id'>): Promi
     .from('medical_staff')
     .insert({
       name: staff.name,
-      dob: staff.dob,
+      dob: staff.dob || null,
       gender: staff.gender,
-      hire_date: staff.hireDate,
+      hire_date: staff.hireDate || null,
       fire_date: staff.fireDate || null,
       status: staff.status,
       permissions: staff.permissions,
@@ -626,10 +626,10 @@ export async function updateMedicalStaff(staffId: number, updates: Partial<Medic
   const dbUpdates: any = {};
 
   if (updates.name !== undefined) dbUpdates.name = updates.name;
-  if (updates.dob !== undefined) dbUpdates.dob = updates.dob;
+  if (updates.dob !== undefined) dbUpdates.dob = updates.dob || null;
   if (updates.gender !== undefined) dbUpdates.gender = updates.gender;
-  if (updates.hireDate !== undefined) dbUpdates.hire_date = updates.hireDate;
-  if (updates.fireDate !== undefined) dbUpdates.fire_date = updates.fireDate;
+  if (updates.hireDate !== undefined) dbUpdates.hire_date = updates.hireDate || null;
+  if (updates.fireDate !== undefined) dbUpdates.fire_date = updates.fireDate || null;
   if (updates.status !== undefined) dbUpdates.status = updates.status;
   if (updates.permissions !== undefined) dbUpdates.permissions = updates.permissions;
   if (updates.workPatterns !== undefined) dbUpdates.work_patterns = updates.workPatterns;
@@ -695,9 +695,9 @@ export async function createStaff(staff: Omit<Staff, 'id'>): Promise<Staff> {
     .from('staff')
     .insert({
       name: staff.name,
-      dob: staff.dob,
+      dob: staff.dob || null,
       gender: staff.gender,
-      hire_date: staff.hireDate,
+      hire_date: staff.hireDate || null,
       fire_date: staff.fireDate || null,
       status: staff.status,
       rank: staff.rank,
@@ -731,10 +731,10 @@ export async function updateStaff(staffId: number, updates: Partial<Staff>): Pro
   const dbUpdates: any = {};
 
   if (updates.name !== undefined) dbUpdates.name = updates.name;
-  if (updates.dob !== undefined) dbUpdates.dob = updates.dob;
+  if (updates.dob !== undefined) dbUpdates.dob = updates.dob || null;
   if (updates.gender !== undefined) dbUpdates.gender = updates.gender;
-  if (updates.hireDate !== undefined) dbUpdates.hire_date = updates.hireDate;
-  if (updates.fireDate !== undefined) dbUpdates.fire_date = updates.fireDate;
+  if (updates.hireDate !== undefined) dbUpdates.hire_date = updates.hireDate || null;
+  if (updates.fireDate !== undefined) dbUpdates.fire_date = updates.fireDate || null;
   if (updates.status !== undefined) dbUpdates.status = updates.status;
   if (updates.rank !== undefined) dbUpdates.rank = updates.rank;
   if (updates.department !== undefined) dbUpdates.department = updates.department;
