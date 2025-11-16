@@ -1,0 +1,5 @@
+{
+  "name": "한의원 관리 ver1.0",
+  "description": "한의원 환자 예약, 대기, 치료, 수납 현황을 한눈에 관리할 수 있는 대시보드 애플리케이션입니다.",
+  "requestFramePermissions": []
+}

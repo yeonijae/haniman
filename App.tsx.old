@@ -1,0 +1,2146 @@
+import React, { useState, useMemo, useEffect } from 'react';
+import Header, { ModalType, ViewType } from './components/Header';
+import ReservationStatus from './components/ReservationStatus';
+import ConsultationStatus from './components/ConsultationStatus';
+import WaitingList from './components/WaitingList';
+import TreatmentRoomStatus from './components/TreatmentRoomStatus';
+import PaymentStatus from './components/PaymentStatus';
+import Modal from './components/Modal';
+import { Patient, PatientStatus, ReservationsState, Reservation, Payment, CompletedPayment, PaymentMethod, TreatmentDetailItem, MedicalStaff, Staff, UncoveredCategories, ConsultationRoom, ActingQueueState, Acting, ActingType, TreatmentRoom, RoomStatus, DefaultTreatment, SessionTreatment, User } from './types';
+import { CONSULTATION_WAITING_LIST, TREATMENT_WAITING_LIST, ALL_PATIENTS, PAYMENTS_WAITING, MEDICAL_STAFF_LIST, STAFF_LIST, UNCOVERED_CATEGORIES_DATA, CONSULTATION_ROOMS, INITIAL_TREATMENT_ROOMS, DOCTORS, USERS } from './constants';
+import NewPatientForm, { NewPatientData } from './components/NewPatientForm';
+import { NewReservationData } from './components/NewReservationForm';
+import ReservationModal from './components/ReservationModal';
+import PatientSearch from './components/PatientSearch';
+import PaymentModal from './components/PaymentModal';
+import DailyPaymentSummary from './components/DailyPaymentSummary';
+import Settings, { BulkPatientData } from './components/Settings';
+import TreatmentView from './components/TreatmentView';
+import ActingManagementView from './components/ActingManagementView';
+import LoginScreen from './components/LoginScreen';
+// Supabase API 통합
+import * as api from './lib/api';
+import { supabase } from './lib/supabaseClient';
+
+const findAvailableSlot = (
+    currentDateKey: string, 
+    currentTime: string, 
+    actingNeeded: number, 
+    reservationState: ReservationsState,
+    doctor: string,
+    ignoreReservationId?: string
+): { date: string, time: string, acting: number }[] => {
+    let remainingActing = actingNeeded;
+    const slots = [];
+    let [hour, minute] = currentTime.split(':').map(Number);
+    
+    const getDateFromKey = (key: string) => {
+        const [y, m, d] = key.split('-').map(Number);
+        return new Date(y, m - 1, d);
+    }
+
+    let currentDay = getDateFromKey(currentDateKey);
+
+    while (remainingActing > 0) {
+        const timeKey = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+        
+        const year = currentDay.getFullYear();
+        const month = String(currentDay.getMonth() + 1).padStart(2, '0');
+        const day = String(currentDay.getDate()).padStart(2, '0');
+        const dayKey = `${year}-${month}-${day}`;
+
+        let existingReservations = reservationState[dayKey]?.[doctor]?.[timeKey] || [];
+        if(ignoreReservationId) {
+            existingReservations = existingReservations.filter(r => r.id !== ignoreReservationId);
+        }
+        
+        const usedActing = existingReservations.reduce((sum, r) => sum + r.slotActing, 0);
+        const availableActing = 6 - usedActing;
+
+        const actingToBook = Math.min(remainingActing, availableActing);
+        
+        if (actingToBook > 0) {
+            slots.push({ date: dayKey, time: timeKey, acting: actingToBook });
+            remainingActing -= actingToBook;
+        }
+
+        // Move to next 30-min slot
+        minute += 30;
+        if (minute >= 60) {
+            hour++;
+            minute = 0;
+        }
+        if (hour >= 20) { // End of day
+            hour = 9;
+            minute = 30;
+            currentDay.setDate(currentDay.getDate() + 1); // Move to next day
+        }
+    }
+    return slots;
+};
+
+// The type for PaymentItem from the modal
+type PaymentItem = { id: number; method: PaymentMethod; amount: string; };
+
+interface BulkAddFailure {
+    name: string;
+    chartNumber?: string;
+    reason: string;
+}
+
+const App: React.FC = () => {
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentView, setCurrentView] = useState<ViewType>('dashboard');
+  const [modalType, setModalType] = useState<ModalType | null>(null);
+  const [modalTitle, setModalTitle] = useState<string>('');
+  const [isModalWide, setIsModalWide] = useState<boolean>(false);
+  const [editingReservation, setEditingReservation] = useState<Reservation | null>(null);
+  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
+  const [bulkAddResult, setBulkAddResult] = useState<{ new: number; updated: number; failures: BulkAddFailure[] } | null>(null);
+  const [patientIdToDelete, setPatientIdToDelete] = useState<number | null>(null);
+  const [patientForNewReservation, setPatientForNewReservation] = useState<Patient | null>(null);
+  const [actingToEdit, setActingToEdit] = useState<{ doctorId: string; acting: Acting } | null>(null);
+
+
+  const [allPatients, setAllPatients] = useState<Patient[]>([]);
+  const [consultationWaitingList, setConsultationWaitingList] = useState<Patient[]>([]);
+  const [treatmentWaitingList, setTreatmentWaitingList] = useState<Patient[]>([]);
+  const [reservations, setReservations] = useState<ReservationsState>({});
+  const [paymentsWaiting, setPaymentsWaiting] = useState<Payment[]>([]);
+  const [completedPayments, setCompletedPayments] = useState<CompletedPayment[]>([]);
+  const [medicalStaff, setMedicalStaff] = useState<MedicalStaff[]>([]);
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [uncoveredCategories, setUncoveredCategories] = useState<UncoveredCategories>({});
+  const [consultationRooms, setConsultationRooms] = useState<ConsultationRoom[]>(CONSULTATION_ROOMS);
+  const [treatmentRooms, setTreatmentRooms] = useState<TreatmentRoom[]>([]);
+  const [actingQueues, setActingQueues] = useState<ActingQueueState>({
+    '김원장': [
+      { id: 'act-temp-1', patientId: 9, patientName: '박서준', type: '침', duration: 15, source: 'manual' },
+      { id: 'act-temp-2', patientId: 10, patientName: '한지민', type: '추나', duration: 20, source: 'manual' },
+      { id: 'act-temp-3', patientId: 2, patientName: '이서연', type: '약상담', duration: 25, source: 'manual' },
+      { id: 'act-temp-9', patientId: 1, patientName: '김민준', type: '침', duration: 15, source: 'manual' },
+    ],
+    '강원장': [
+        { id: 'act-temp-4', patientId: 8, patientName: '송예나', type: '약상담', duration: 30, source: 'manual' },
+        { id: 'act-temp-5', patientId: 6, patientName: '윤채원', type: '초진', duration: 30, source: 'manual' },
+        { id: 'act-temp-10', patientId: 5, patientName: '정시우', type: '향기', duration: 5, source: 'manual' },
+        { id: 'act-temp-11', patientId: 7, patientName: '강지호', type: '습부', duration: 10, source: 'manual' },
+    ],
+    '임원장': [
+        { id: 'act-temp-6', patientId: 4, patientName: '최지우', type: '초음파', duration: 10, source: 'manual' },
+        { id: 'act-temp-7', patientId: 3, patientName: '박하준', type: '침', duration: 15, source: 'manual' },
+        { id: 'act-temp-8', patientId: 11, patientName: '조은서', type: '기타', duration: 5, source: 'manual' },
+        { id: 'act-temp-12', patientId: 12, patientName: '임도윤', type: '대기', duration: 0, source: 'manual' },
+    ],
+    '전원장': [
+        { id: 'act-temp-13', patientId: 13, patientName: '신유준', type: '침', duration: 15, source: 'manual' },
+        { id: 'act-temp-14', patientId: 14, patientName: '김철수', type: '추나', duration: 20, source: 'manual' },
+        { id: 'act-temp-15', patientId: 15, patientName: '박영희', type: '초음파', duration: 10, source: 'manual' },
+    ],
+  });
+
+  // Effect for loading initial data from Supabase
+  useEffect(() => {
+    if (!currentUser) return; // 로그인 전에는 로드하지 않음
+
+    const loadInitialData = async () => {
+      try {
+        console.log('📥 Supabase에서 데이터 로드 중...');
+
+        // 환자 데이터 로드
+        const patients = await api.fetchPatients();
+        console.log(`✅ ${patients.length}명의 환자 데이터 로드 완료`);
+        setAllPatients(patients);
+
+        // 각 환자의 기본 치료 로드
+        for (const patient of patients) {
+          const defaultTreatments = await api.fetchPatientDefaultTreatments(patient.id);
+          if (defaultTreatments.length > 0) {
+            setAllPatients(prev => prev.map(p =>
+              p.id === patient.id ? { ...p, defaultTreatments } : p
+            ));
+          }
+        }
+
+        // 의료진 데이터 로드
+        const medicalStaffData = await api.fetchMedicalStaff();
+        console.log(`✅ ${medicalStaffData.length}명의 의료진 데이터 로드 완료`);
+        setMedicalStaff(medicalStaffData);
+
+        // 스태프 데이터 로드
+        const staffData = await api.fetchStaff();
+        console.log(`✅ ${staffData.length}명의 스태프 데이터 로드 완료`);
+        setStaff(staffData);
+
+        // 비급여 카테고리 데이터 로드
+        const categoriesData = await api.fetchUncoveredCategories();
+        console.log(`✅ 비급여 카테고리 데이터 로드 완료`);
+        setUncoveredCategories(categoriesData);
+
+        // 치료실 데이터 로드
+        const roomsData = await api.fetchTreatmentRooms();
+        console.log(`✅ ${roomsData.length}개의 치료실 데이터 로드 완료`);
+        setTreatmentRooms(roomsData);
+
+      } catch (error) {
+        console.error('❌ 데이터 로드 오류:', error);
+        alert('데이터를 불러오는 중 오류가 발생했습니다. Supabase 설정을 확인해주세요.');
+      }
+    };
+
+    loadInitialData();
+  }, [currentUser]);
+
+  // 결제 데이터 로드
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const loadPaymentData = async () => {
+      try {
+        console.log('📥 Supabase에서 결제 데이터 로드 중...');
+
+        // 미완료 결제 로드
+        const pendingPayments = await api.fetchPendingPayments();
+        console.log(`✅ ${pendingPayments.length}개의 미완료 결제 로드 완료`);
+        setPaymentsWaiting(pendingPayments);
+
+        // 완료된 결제 로드 (최근 100개만)
+        const completed = await api.fetchCompletedPayments(100);
+        console.log(`✅ ${completed.length}개의 완료 결제 로드 완료`);
+
+        // completedPayments 형식으로 변환
+        const formattedCompleted = completed.map(payment => ({
+          paymentId: payment.id,
+          patientId: payment.patientId,
+          patientName: payment.patientName,
+          patientChartNumber: payment.patientChartNumber,
+          totalAmount: payment.totalAmount || 0,
+          paidAmount: payment.paidAmount || 0,
+          remainingAmount: payment.remainingAmount || 0,
+          details: payment.details || '진료비',
+          paymentMethods: payment.paymentMethods || [],
+          completedDate: payment.completedAt ? new Date(payment.completedAt).toLocaleDateString('ko-KR') : '',
+          treatmentItems: payment.treatmentItems || []
+        }));
+        setCompletedPayments(formattedCompleted);
+
+      } catch (error) {
+        console.error('❌ 결제 데이터 로드 오류:', error);
+        alert('결제 데이터를 불러오는 중 오류가 발생했습니다.');
+      }
+    };
+
+    loadPaymentData();
+  }, [currentUser]);
+
+  // 예약 데이터 로드
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const loadReservationData = async () => {
+      try {
+        console.log('📥 Supabase에서 예약 데이터 로드 중...');
+
+        // 모든 예약 로드 (향후 30일치)
+        const today = new Date();
+        const futureDate = new Date();
+        futureDate.setDate(today.getDate() + 30);
+
+        const allReservations = await api.fetchReservations({
+          startDate: today.toISOString().split('T')[0],
+          endDate: futureDate.toISOString().split('T')[0],
+        });
+
+        console.log(`✅ ${allReservations.length}개의 예약 로드 완료`);
+
+        // 각 예약의 치료 항목 로드 및 로컬 형식으로 변환
+        const reservationsNested: { [date: string]: { [doctor: string]: { [time: string]: Reservation[] } } } = {};
+
+        for (const res of allReservations) {
+          const treatments = await api.fetchReservationTreatments(res.id);
+
+          const year = res.reservation_date.substring(0, 4);
+          const month = res.reservation_date.substring(5, 7);
+          const day = res.reservation_date.substring(8, 10);
+          const dateKey = `${year}-${month}-${day}`;
+          const timeKey = res.reservation_time;
+
+          const patient = allPatients.find(p => p.id === res.patient_id);
+
+          // 예약을 슬롯별로 분할하여 UI 형식에 맞게 변환
+          const totalActing = treatments.reduce((sum, t) => sum + t.acting, 0);
+          const slots = findAvailableSlot(dateKey, timeKey, totalActing, reservationsNested, res.doctor);
+
+          slots.forEach((slot, index) => {
+            const reservation: Reservation = {
+              id: res.id,
+              partId: `${res.id}-${slot.date}-${slot.time}`,
+              patientId: res.patient_id,
+              patientName: patient?.name || '알 수 없음',
+              patientChartNumber: patient?.chartNumber || '',
+              doctor: res.doctor,
+              date: slot.date,
+              time: slot.time,
+              treatments,
+              slotActing: slot.acting,
+              isContinuation: index > 0,
+              memo: res.memo || '',
+              status: res.status || 'confirmed',
+            };
+
+            if (!reservationsNested[slot.date]) reservationsNested[slot.date] = {};
+            if (!reservationsNested[slot.date][res.doctor]) reservationsNested[slot.date][res.doctor] = {};
+            if (!reservationsNested[slot.date][res.doctor][slot.time]) reservationsNested[slot.date][res.doctor][slot.time] = [];
+
+            reservationsNested[slot.date][res.doctor][slot.time].push(reservation);
+          });
+        }
+
+        setReservations(reservationsNested);
+
+      } catch (error) {
+        console.error('❌ 예약 데이터 로드 오류:', error);
+        alert('예약 데이터를 불러오는 중 오류가 발생했습니다.');
+      }
+    };
+
+    loadReservationData();
+  }, [currentUser, allPatients]);
+
+  // Supabase Realtime 실시간 구독
+  useEffect(() => {
+    if (!currentUser) return;
+
+    console.log('🔄 Supabase Realtime 구독 시작...');
+
+    // 환자 데이터 실시간 구독
+    const patientsSubscription = supabase
+      .channel('patients-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'patients' },
+        async (payload) => {
+          console.log('📨 환자 데이터 변경 감지:', payload);
+
+          if (payload.eventType === 'INSERT') {
+            const newPatient = payload.new as any;
+            const treatments = await api.fetchPatientDefaultTreatments(newPatient.id);
+            setAllPatients(prev => [...prev, { ...newPatient, defaultTreatments: treatments }]);
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedPatient = payload.new as any;
+            const treatments = await api.fetchPatientDefaultTreatments(updatedPatient.id);
+            setAllPatients(prev => prev.map(p =>
+              p.id === updatedPatient.id ? { ...updatedPatient, defaultTreatments: treatments } : p
+            ));
+          } else if (payload.eventType === 'DELETE') {
+            const deletedId = payload.old.id;
+            setAllPatients(prev => prev.filter(p => p.id !== deletedId));
+          }
+        }
+      )
+      .subscribe();
+
+    // 결제 데이터 실시간 구독
+    const paymentsSubscription = supabase
+      .channel('payments-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'payments' },
+        (payload) => {
+          console.log('📨 결제 데이터 변경 감지:', payload);
+
+          if (payload.eventType === 'INSERT') {
+            const newPayment = payload.new as any;
+            if (!newPayment.isPaid) {
+              setPaymentsWaiting(prev => [...prev, newPayment]);
+            }
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedPayment = payload.new as any;
+
+            if (updatedPayment.isPaid) {
+              // 완료된 결제로 이동
+              setPaymentsWaiting(prev => prev.filter(p => p.id !== updatedPayment.id));
+
+              const formattedCompleted = {
+                paymentId: updatedPayment.id,
+                patientId: updatedPayment.patientId,
+                patientName: updatedPayment.patientName,
+                patientChartNumber: updatedPayment.patientChartNumber,
+                totalAmount: updatedPayment.totalAmount || 0,
+                paidAmount: updatedPayment.paidAmount || 0,
+                remainingAmount: updatedPayment.remainingAmount || 0,
+                details: updatedPayment.details || '진료비',
+                paymentMethods: updatedPayment.paymentMethods || [],
+                completedDate: updatedPayment.completedAt ? new Date(updatedPayment.completedAt).toLocaleDateString('ko-KR') : '',
+                treatmentItems: updatedPayment.treatmentItems || []
+              };
+              setCompletedPayments(prev => [formattedCompleted, ...prev]);
+            } else {
+              // 미완료 결제 업데이트
+              setPaymentsWaiting(prev => prev.map(p =>
+                p.id === updatedPayment.id ? updatedPayment : p
+              ));
+            }
+          } else if (payload.eventType === 'DELETE') {
+            const deletedId = payload.old.id;
+            setPaymentsWaiting(prev => prev.filter(p => p.id !== deletedId));
+          }
+        }
+      )
+      .subscribe();
+
+    // 예약 데이터 실시간 구독
+    const reservationsSubscription = supabase
+      .channel('reservations-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'reservations' },
+        async (payload) => {
+          console.log('📨 예약 데이터 변경 감지:', payload);
+
+          // 예약 데이터가 변경되면 전체 예약 목록 다시 로드
+          // (예약은 복잡한 중첩 구조이므로 전체 로드가 더 안전함)
+          try {
+            const today = new Date();
+            const futureDate = new Date();
+            futureDate.setDate(today.getDate() + 30);
+
+            const allReservations = await api.fetchReservations({
+              startDate: today.toISOString().split('T')[0],
+              endDate: futureDate.toISOString().split('T')[0],
+            });
+
+            const reservationsNested: { [date: string]: { [doctor: string]: { [time: string]: Reservation[] } } } = {};
+
+            for (const res of allReservations) {
+              const treatments = await api.fetchReservationTreatments(res.id);
+              const year = res.reservation_date.substring(0, 4);
+              const month = res.reservation_date.substring(5, 7);
+              const day = res.reservation_date.substring(8, 10);
+              const dateKey = `${year}-${month}-${day}`;
+              const timeKey = res.reservation_time;
+
+              const patient = allPatients.find(p => p.id === res.patient_id);
+              const totalActing = treatments.reduce((sum, t) => sum + t.acting, 0);
+              const slots = findAvailableSlot(dateKey, timeKey, totalActing, reservationsNested, res.doctor);
+
+              slots.forEach((slot, index) => {
+                const reservation: Reservation = {
+                  id: res.id,
+                  partId: `${res.id}-${slot.date}-${slot.time}`,
+                  patientId: res.patient_id,
+                  patientName: patient?.name || '알 수 없음',
+                  patientChartNumber: patient?.chartNumber || '',
+                  doctor: res.doctor,
+                  date: slot.date,
+                  time: slot.time,
+                  treatments,
+                  slotActing: slot.acting,
+                  isContinuation: index > 0,
+                  memo: res.memo || '',
+                  status: res.status || 'confirmed',
+                };
+
+                if (!reservationsNested[slot.date]) reservationsNested[slot.date] = {};
+                if (!reservationsNested[slot.date][res.doctor]) reservationsNested[slot.date][res.doctor] = {};
+                if (!reservationsNested[slot.date][res.doctor][slot.time]) reservationsNested[slot.date][res.doctor][slot.time] = [];
+
+                reservationsNested[slot.date][res.doctor][slot.time].push(reservation);
+              });
+            }
+
+            setReservations(reservationsNested);
+          } catch (error) {
+            console.error('❌ 실시간 예약 데이터 로드 오류:', error);
+          }
+        }
+      )
+      .subscribe();
+
+    // 치료실 데이터 실시간 구독
+    const treatmentRoomsSubscription = supabase
+      .channel('treatment-rooms-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'treatment_rooms' },
+        async (payload) => {
+          console.log('📨 치료실 데이터 변경 감지:', payload);
+
+          // 치료실 데이터가 변경되면 전체 치료실 목록 다시 로드
+          try {
+            const roomsData = await api.fetchTreatmentRooms();
+            setTreatmentRooms(roomsData);
+          } catch (error) {
+            console.error('❌ 실시간 치료실 데이터 로드 오류:', error);
+          }
+        }
+      )
+      .subscribe();
+
+    console.log('✅ Supabase Realtime 구독 완료');
+
+    // 컴포넌트 언마운트 시 구독 해제
+    return () => {
+      console.log('🔌 Supabase Realtime 구독 해제...');
+      supabase.removeChannel(patientsSubscription);
+      supabase.removeChannel(paymentsSubscription);
+      supabase.removeChannel(reservationsSubscription);
+      supabase.removeChannel(treatmentRoomsSubscription);
+    };
+  }, [currentUser, allPatients]);
+
+  // Effect for managing treatment timers
+  useEffect(() => {
+    const timer = setInterval(() => {
+        setTreatmentRooms(currentRooms => {
+            let hasChanged = false;
+            const updatedRooms = currentRooms.map(room => {
+                if (room.status !== RoomStatus.IN_USE) return room;
+
+                const newTreatments = room.sessionTreatments.map(tx => {
+                    if (tx.status === 'running' && tx.startTime) {
+                        const elapsed = (Date.now() - new Date(tx.startTime).getTime()) / 1000 + tx.elapsedSeconds;
+                        if (elapsed >= tx.duration * 60) {
+                            hasChanged = true;
+                            // Don't auto-complete, just let timer show "완료"
+                            // return { ...tx, status: 'completed' as const };
+                        }
+                    }
+                    return tx;
+                });
+
+                if (hasChanged) {
+                    return { ...room, sessionTreatments: newTreatments };
+                }
+                return room;
+            });
+
+            return hasChanged ? updatedRooms : currentRooms;
+        });
+    }, 1000); // Update every second for live timers
+
+    return () => clearInterval(timer);
+  }, []);
+
+
+  const activePatients = useMemo(() => allPatients.filter(p => !p.deletionDate), [allPatients]);
+  const deletedPatients = useMemo(() => allPatients.filter(p => !!p.deletionDate), [allPatients]);
+
+  const patientToDeleteInfo = useMemo(() => {
+    if (!patientIdToDelete) return null;
+    return allPatients.find(p => p.id === patientIdToDelete);
+  }, [patientIdToDelete, allPatients]);
+
+
+  const openModal = (type: ModalType, title: string, wide?: boolean) => {
+    setModalType(type);
+    setModalTitle(title);
+    setIsModalWide(wide || false);
+  };
+
+  const closeModal = () => {
+    setModalType(null);
+    setModalTitle('');
+    setIsModalWide(false);
+    setEditingReservation(null);
+    setSelectedPayment(null);
+    setPatientForNewReservation(null);
+    setActingToEdit(null);
+  };
+  
+  const handleEditReservation = (reservationToEdit: Reservation) => {
+    setEditingReservation(reservationToEdit);
+    openModal('reservation', '예약 수정', false);
+  };
+
+  const addNewReservation = async (data: NewReservationData) => {
+    const { patient, doctor, date, time, treatments, memo } = data;
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateKey = `${year}-${month}-${day}`;
+
+    const totalActing = treatments.reduce((sum, t) => sum + t.acting, 0);
+
+    const slots = findAvailableSlot(dateKey, time, totalActing, reservations, doctor);
+
+    let reservationId: string;
+
+    try {
+      // Supabase에 예약 저장 (UUID 자동 생성됨)
+      reservationId = await api.createReservation({
+        patientId: patient.id,
+        doctor,
+        reservationDate: dateKey,
+        reservationTime: time,
+        status: 'confirmed',
+        memo: memo || '',
+      });
+
+      // 치료 항목 저장
+      await api.addReservationTreatments(reservationId, treatments);
+
+      console.log('✅ 예약 Supabase 저장 완료, ID:', reservationId);
+    } catch (error) {
+      console.error('❌ 예약 저장 오류:', error);
+      alert('예약 저장 중 오류가 발생했습니다.');
+      return;
+    }
+
+    // 로컬 상태 업데이트
+    setReservations(prev => {
+        const newReservations = JSON.parse(JSON.stringify(prev));
+
+        slots.forEach((slot, index) => {
+            const newReservationPart: Reservation = {
+                id: reservationId,
+                partId: `${reservationId}-${slot.date}-${slot.time}`,
+                patientId: patient.id,
+                patientName: patient.name,
+                patientChartNumber: patient.chartNumber || '',
+                doctor,
+                date: slot.date,
+                time: slot.time,
+                treatments,
+                slotActing: slot.acting,
+                isContinuation: index > 0,
+                memo,
+                status: 'confirmed',
+            };
+
+            if (!newReservations[slot.date]) newReservations[slot.date] = {};
+            if (!newReservations[slot.date][doctor]) newReservations[slot.date][doctor] = {};
+            if (!newReservations[slot.date][doctor][slot.time]) newReservations[slot.date][doctor][slot.time] = [];
+
+            newReservations[slot.date][doctor][slot.time].push(newReservationPart);
+        });
+
+        return newReservations;
+    });
+
+    const reservationDate = slots[0]?.date;
+    const reservationTime = slots[0]?.time;
+
+    if (reservationDate && reservationTime) {
+      setPaymentsWaiting(prevPayments =>
+        prevPayments.map(p =>
+          p.patientId === patient.id
+          ? { ...p, reservationId, reservationDate, reservationTime }
+          : p
+        )
+      );
+    }
+
+    if (slots.length > 1 || slots[0].date !== dateKey || slots[0].time !== time) {
+      alert(`예약이 여러 시간대에 걸쳐 ${slots[0].date} ${slots[0].time}부터 배정되었습니다. 자세한 내용은 달력에서 확인해주세요.`);
+    }
+
+    alert(`${patient.name}님 예약이 완료되었습니다.`);
+  };
+
+  const updateReservation = async (reservationId: string, data: NewReservationData) => {
+    const { patient, doctor, date, time, treatments, memo } = data;
+    const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const totalActing = treatments.reduce((sum, t) => sum + t.acting, 0);
+
+    try {
+      // Supabase에 예약 업데이트
+      await api.updateReservation(reservationId, {
+        patient_id: patient.id,
+        doctor,
+        reservation_date: dateKey,
+        reservation_time: time,
+        status: 'confirmed',
+        memo: memo || '',
+      });
+
+      // 치료 항목 재저장 (기존 삭제 후 새로 추가)
+      await api.deleteReservationTreatments(reservationId);
+      await api.addReservationTreatments(reservationId, treatments);
+
+      console.log('✅ 예약 수정 Supabase 저장 완료');
+    } catch (error) {
+      console.error('❌ 예약 수정 오류:', error);
+      alert('예약 수정 중 오류가 발생했습니다.');
+      return;
+    }
+
+    // 1. Create a new state by removing all parts of the old reservation
+    const reservationsWithoutOld = JSON.parse(JSON.stringify(reservations));
+    for (const date in reservationsWithoutOld) {
+        for (const doctor in reservationsWithoutOld[date]) {
+            for (const time in reservationsWithoutOld[date][doctor]) {
+                reservationsWithoutOld[date][doctor][time] = reservationsWithoutOld[date][doctor][time].filter(
+                    (res: Reservation) => res.id !== reservationId
+                );
+                if (reservationsWithoutOld[date][doctor][time].length === 0) {
+                    delete reservationsWithoutOld[date][doctor][time];
+                }
+            }
+            if (Object.keys(reservationsWithoutOld[date][doctor]).length === 0) {
+                delete reservationsWithoutOld[date][doctor];
+            }
+        }
+        if (Object.keys(reservationsWithoutOld[date]).length === 0) {
+            delete reservationsWithoutOld[date];
+        }
+    }
+
+    // 2. Add the updated reservation as if it were new, using the old ID
+    const slots = findAvailableSlot(dateKey, time, totalActing, reservationsWithoutOld, doctor);
+
+    slots.forEach((slot, index) => {
+        const newReservationPart: Reservation = {
+            id: reservationId, // Reuse the original ID
+            partId: `${reservationId}-${slot.date}-${slot.time}`,
+            patientId: patient.id,
+            patientName: patient.name,
+            patientChartNumber: patient.chartNumber || '',
+            doctor,
+            date: slot.date,
+            time: slot.time,
+            treatments,
+            slotActing: slot.acting,
+            isContinuation: index > 0,
+            memo,
+            status: 'confirmed',
+        };
+        if (!reservationsWithoutOld[slot.date]) reservationsWithoutOld[slot.date] = {};
+        if (!reservationsWithoutOld[slot.date][doctor]) reservationsWithoutOld[slot.date][doctor] = {};
+        if (!reservationsWithoutOld[slot.date][doctor][slot.time]) reservationsWithoutOld[slot.date][doctor][slot.time] = [];
+        reservationsWithoutOld[slot.date][doctor][slot.time].push(newReservationPart);
+    });
+
+    setReservations(reservationsWithoutOld);
+
+    const reservationDate = slots[0]?.date;
+    const reservationTime = slots[0]?.time;
+
+    if (reservationDate && reservationTime) {
+      setPaymentsWaiting(prevPayments =>
+        prevPayments.map(p =>
+          p.patientId === patient.id
+          ? { ...p, reservationId, reservationDate, reservationTime }
+          : p
+        )
+      );
+    } else { // Reservation might be in a different month, or deleted
+       setPaymentsWaiting(prevPayments =>
+        prevPayments.map(p => {
+          if (p.reservationId === reservationId) {
+            const { reservationId, reservationDate, reservationTime, ...rest } = p;
+            return rest;
+          }
+          return p;
+        })
+      );
+    }
+
+    alert('예약이 수정되었습니다.');
+  };
+
+  const cancelReservation = async (reservationId: string) => {
+      try {
+        // Supabase에서 예약 상태를 'canceled'로 변경
+        await api.updateReservation(reservationId, { status: 'canceled' });
+        console.log('✅ 예약 취소 Supabase 저장 완료');
+      } catch (error) {
+        console.error('❌ 예약 취소 오류:', error);
+        alert('예약 취소 중 오류가 발생했습니다.');
+        return;
+      }
+
+      setReservations(prev => {
+          const newReservations = JSON.parse(JSON.stringify(prev));
+          let patientName = '';
+          for (const date in newReservations) {
+              for (const doctor in newReservations[date]) {
+                  for (const time in newReservations[date][doctor]) {
+                      newReservations[date][doctor][time].forEach((res: Reservation) => {
+                          if (res.id === reservationId) {
+                              res.status = 'canceled';
+                              if(!patientName) patientName = res.patientName;
+                          }
+                      });
+                  }
+              }
+          }
+
+          setPaymentsWaiting(prevPayments =>
+            prevPayments.map(p => {
+              if (p.reservationId === reservationId) {
+                const { reservationId, reservationDate, reservationTime, ...rest } = p;
+                return rest;
+              }
+              return p;
+            })
+          );
+
+          alert(`${patientName}님의 예약이 취소되었습니다.`);
+          return newReservations;
+      });
+  };
+
+  const deleteReservation = async (reservationId: string) => {
+      try {
+        // Supabase에서 예약 삭제
+        await api.deleteReservation(reservationId);
+        console.log('✅ 예약 삭제 Supabase 완료');
+      } catch (error) {
+        console.error('❌ 예약 삭제 오류:', error);
+        alert('예약 삭제 중 오류가 발생했습니다.');
+        return;
+      }
+
+      setReservations(prev => {
+          const newReservations = JSON.parse(JSON.stringify(prev));
+          for (const date in newReservations) {
+              for (const doctor in newReservations[date]) {
+                  for (const time in newReservations[date][doctor]) {
+                      newReservations[date][doctor][time] = newReservations[date][doctor][time].filter(
+                          (res: Reservation) => res.id !== reservationId
+                      );
+                      if (newReservations[date][doctor][time].length === 0) {
+                          delete newReservations[date][doctor][time];
+                      }
+                  }
+                  if (Object.keys(newReservations[date][doctor]).length === 0) {
+                      delete newReservations[date][doctor];
+                  }
+              }
+              if (Object.keys(newReservations[date]).length === 0) {
+                  delete newReservations[date];
+              }
+          }
+
+          setPaymentsWaiting(prevPayments =>
+            prevPayments.map(p => {
+              if (p.reservationId === reservationId) {
+                const { reservationId, reservationDate, reservationTime, ...rest } = p;
+                return rest;
+              }
+              return p;
+            })
+          );
+
+          return newReservations;
+      });
+  };
+
+
+  const addPatientToConsultation = (patient: Patient) => {
+    if (consultationWaitingList.some(p => p.id === patient.id)) {
+        alert(`${patient.name}님은 이미 진료 대기 목록에 있습니다.`);
+        return;
+    }
+    const newPatient: Patient = {
+        ...patient,
+        status: PatientStatus.WAITING_CONSULTATION,
+        time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        details: '검색 추가',
+    };
+    setConsultationWaitingList(prevList => [...prevList, newPatient]);
+    alert(`${patient.name}님을 진료 대기 목록에 추가했습니다.`);
+  };
+
+  const addPatientToTreatment = (patient: Patient) => {
+    if (treatmentWaitingList.some(p => p.id === patient.id)) {
+        alert(`${patient.name}님은 이미 치료 대기 목록에 있습니다.`);
+        return;
+    }
+    const newPatient: Patient = {
+        ...patient,
+        status: PatientStatus.WAITING_TREATMENT,
+        time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        details: '검색 추가',
+    };
+    setTreatmentWaitingList(prevList => [...prevList, newPatient]);
+    alert(`${patient.name}님을 치료 대기 목록에 추가했습니다.`);
+  };
+  
+  const handlePatientArrival = (reservation: Reservation, destination: 'consultation' | 'treatment') => {
+    const patient = allPatients.find(p => p.id === reservation.patientId);
+    if (!patient) {
+        alert('환자 정보를 찾을 수 없습니다.');
+        return;
+    }
+
+    const currentTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const patientToWait = {
+        ...patient,
+        time: currentTime,
+        details: '예약환자 내원',
+    };
+
+    if (destination === 'consultation') {
+        if (consultationWaitingList.some(p => p.id === patient.id)) {
+            alert(`${patient.name}님은 이미 진료 대기 목록에 있습니다.`);
+            return;
+        }
+        patientToWait.status = PatientStatus.WAITING_CONSULTATION;
+        setConsultationWaitingList(prev => [...prev, patientToWait]);
+    } else { // treatment
+        if (treatmentWaitingList.some(p => p.id === patient.id)) {
+            alert(`${patient.name}님은 이미 치료 대기 목록에 있습니다.`);
+            return;
+        }
+        patientToWait.status = PatientStatus.WAITING_TREATMENT;
+        setTreatmentWaitingList(prev => [...prev, patientToWait]);
+    }
+
+    // Add actings to queue
+    const doctor = reservation.doctor;
+    if (DOCTORS.includes(doctor)) {
+        const treatmentToActingMap: { [key: string]: { type: ActingType, duration: number } } = {
+            '침': { type: '침', duration: 15 },
+            '추나': { type: '추나', duration: 20 },
+            '약초진': { type: '약상담', duration: 30 },
+            '약재진': { type: '약상담', duration: 20 },
+        };
+
+        const newActings: Acting[] = reservation.treatments
+            .map((treatment, index) => {
+                const actingInfo = treatmentToActingMap[treatment.name];
+                if (actingInfo) {
+                    return {
+                        id: `act-${reservation.patientId}-${Date.now()}-${index}`,
+                        patientId: reservation.patientId,
+                        patientName: reservation.patientName,
+                        type: actingInfo.type,
+                        duration: actingInfo.duration,
+                        source: 'reservation',
+                    };
+                }
+                return null;
+            })
+            .filter((a): a is Acting => a !== null);
+
+        if (newActings.length > 0) {
+            setActingQueues(prev => ({
+                ...prev,
+                [doctor]: [...(prev[doctor] || []), ...newActings]
+            }));
+        }
+    }
+
+    setReservations(prev => {
+        const newReservations = JSON.parse(JSON.stringify(prev));
+        for (const date in newReservations) {
+            for (const doctor in newReservations[date]) {
+                for (const time in newReservations[date][doctor]) {
+                    newReservations[date][doctor][time].forEach((res: Reservation) => {
+                        if (res.id === reservation.id) {
+                            res.status = 'arrived';
+                        }
+                    });
+                }
+            }
+        }
+        return newReservations;
+    });
+
+    alert(`${patient.name}님을 ${destination === 'consultation' ? '진료' : '치료'} 대기 목록에 추가했습니다.`);
+  };
+
+  const addNewPatient = async (formData: NewPatientData) => {
+    try {
+      // 임시 환자 객체 생성 (UI용)
+      const tempPatient: Patient = {
+          id: 0, // 임시 ID
+          name: formData.name,
+          chartNumber: formData.chartNumber || '',
+          status: PatientStatus.WAITING_CONSULTATION,
+          time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+          details: `신규 | ${formData.treatmentType || '희망치료 미지정'}`,
+          dob: formData.dob,
+          gender: formData.gender === '' ? undefined : formData.gender,
+          phone: formData.phone,
+          address: formData.address,
+          referralPath: formData.referral,
+          registrationDate: new Date().toISOString().split('T')[0],
+      };
+
+      // Supabase에 저장
+      const savedPatient = await api.createPatient(tempPatient);
+
+      // 저장된 환자 정보로 업데이트
+      const newPatient: Patient = {
+          ...tempPatient,
+          id: savedPatient.id,
+          chartNumber: savedPatient.chartNumber || tempPatient.chartNumber,
+      };
+
+      setAllPatients(prev => [...prev, newPatient]);
+      setConsultationWaitingList(prevList => [newPatient, ...prevList]);
+
+      // Add '초진' acting
+      const doctor = formData.doctor;
+      if (doctor && DOCTORS.includes(doctor)) {
+          const newActing: Acting = {
+              id: `act-${newPatient.id}-${Date.now()}-0`,
+              patientId: newPatient.id,
+              patientName: newPatient.name,
+              type: '초진',
+              duration: 30,
+              source: 'new_patient',
+          };
+          setActingQueues(prev => ({
+              ...prev,
+              [doctor]: [...(prev[doctor] || []), newActing]
+          }));
+      }
+
+      closeModal();
+      alert(`${newPatient.name}님을 신규 환자로 등록하고 진료 대기 목록에 추가했습니다.`);
+      console.log('✅ 환자 등록 완료:', newPatient);
+    } catch (error) {
+      console.error('❌ 환자 등록 오류:', error);
+      alert('환자 등록 중 오류가 발생했습니다.');
+    }
+  };
+
+  const updatePatientInfo = async (updatedPatientData: Patient) => {
+    try {
+      // Supabase에 저장
+      await api.updatePatient(updatedPatientData.id, updatedPatientData);
+
+      // Update the master list
+      setAllPatients(prev => prev.map(p => p.id === updatedPatientData.id ? updatedPatientData : p));
+
+      // Update patient in waiting lists if they are there
+      setConsultationWaitingList(prev => prev.map(p => p.id === updatedPatientData.id ? { ...p, ...updatedPatientData } : p));
+      setTreatmentWaitingList(prev => prev.map(p => p.id === updatedPatientData.id ? { ...p, ...updatedPatientData } : p));
+
+      // Update name/chart number in reservations
+      setReservations(prev => {
+          const newReservations = JSON.parse(JSON.stringify(prev));
+          for (const date in newReservations) {
+              for (const doctor in newReservations[date]) {
+                  for (const time in newReservations[date][doctor]) {
+                      newReservations[date][doctor][time].forEach((res: Reservation) => {
+                          if (res.patientId === updatedPatientData.id) {
+                              res.patientName = updatedPatientData.name;
+                              res.patientChartNumber = updatedPatientData.chartNumber || '';
+                          }
+                      });
+                  }
+              }
+          }
+          return newReservations;
+      });
+
+      alert(`${updatedPatientData.name}님의 정보가 수정되었습니다.`);
+      console.log('✅ 환자 정보 수정 완료:', updatedPatientData);
+    } catch (error) {
+      console.error('❌ 환자 정보 수정 오류:', error);
+      alert('환자 정보 수정 중 오류가 발생했습니다.');
+    }
+  };
+
+  const updatePatientDefaultTreatments = async (patientId: number, treatments: DefaultTreatment[]) => {
+    try {
+      // Supabase에 저장
+      await api.savePatientDefaultTreatments(patientId, treatments);
+
+      const updateTreatments = (p: Patient) => {
+          if (p.id === patientId) {
+              return { ...p, defaultTreatments: treatments };
+          }
+          return p;
+      };
+      setAllPatients(prev => prev.map(updateTreatments));
+      setTreatmentWaitingList(prev => prev.map(updateTreatments));
+      setConsultationWaitingList(prev => prev.map(updateTreatments));
+
+      console.log('✅ 기본 치료 저장 완료');
+    } catch (error) {
+      console.error('❌ 기본 치료 저장 오류:', error);
+      alert('기본 치료 저장 중 오류가 발생했습니다.');
+    }
+  };
+
+
+  const deletePatient = async (patientId: number) => {
+    const patientToDelete = allPatients.find(p => p.id === patientId);
+    if (!patientToDelete) {
+        console.error("삭제할 환자를 찾을 수 없습니다.");
+        return;
+    }
+
+    try {
+      // Supabase에서 soft delete
+      await api.deletePatient(patientId);
+
+      // 1. Soft delete by adding deletionDate
+      setAllPatients(prev => prev.map(p =>
+        p.id === patientId
+        ? { ...p, deletionDate: new Date().toISOString() }
+        : p
+      ));
+
+      // 2. Filter from active UI lists
+      setConsultationWaitingList(prev => prev.filter(p => p.id !== patientId));
+      setTreatmentWaitingList(prev => prev.filter(p => p.id !== patientId));
+      setPaymentsWaiting(prev => prev.filter(p => p.patientId !== patientId));
+
+      // 3. Filter reservations
+      setReservations(prev => {
+          const newReservations = JSON.parse(JSON.stringify(prev));
+          for (const date in newReservations) {
+              for (const doctor in newReservations[date]) {
+                  for (const time in newReservations[date][doctor]) {
+                      newReservations[date][doctor][time] = newReservations[date][doctor][time].filter(
+                          (res: Reservation) => res.patientId !== patientId
+                      );
+                      if (newReservations[date][doctor][time].length === 0) {
+                          delete newReservations[date][doctor][time];
+                      }
+                  }
+                  if (Object.keys(newReservations[date][doctor]).length === 0) {
+                      delete newReservations[date][doctor];
+                  }
+              }
+              if (Object.keys(newReservations[date]).length === 0) {
+                  delete newReservations[date];
+              }
+          }
+          return newReservations;
+      });
+
+      alert(`${patientToDelete.name}(${patientToDelete.chartNumber}) 님의 정보가 삭제 처리되었습니다.`);
+      console.log('✅ 환자 삭제 완료');
+    } catch (error) {
+      console.error('❌ 환자 삭제 오류:', error);
+      alert('환자 삭제 중 오류가 발생했습니다.');
+    }
+  };
+  
+  const restorePatient = async (patientId: number) => {
+    const patientToRestore = allPatients.find(p => p.id === patientId);
+    if (!patientToRestore) {
+        alert("복구할 환자 정보를 찾을 수 없습니다.");
+        return;
+    }
+
+    try {
+      // Supabase에서 복구
+      await api.restorePatient(patientId);
+
+      setAllPatients(prev => prev.map(p => {
+          if (p.id === patientId) {
+              const { deletionDate, ...restoredPatient } = p;
+              return restoredPatient;
+          }
+          return p;
+      }));
+
+      alert(`${patientToRestore.name} 님의 정보가 복구되었습니다.`);
+      console.log('✅ 환자 복구 완료');
+    } catch (error) {
+      console.error('❌ 환자 복구 오류:', error);
+      alert('환자 복구 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleRequestDeletePatient = (patientId: number) => {
+    setPatientIdToDelete(patientId);
+  };
+
+  const handleConfirmDelete = () => {
+      if (patientIdToDelete) {
+          deletePatient(patientIdToDelete);
+      }
+      setPatientIdToDelete(null);
+  };
+
+  const handleCancelDelete = () => {
+      setPatientIdToDelete(null);
+  };
+
+  const addBulkPatients = async (newPatientsData: BulkPatientData[]) => {
+    const updatedPatients: Patient[] = [];
+    const newPatients: Patient[] = [];
+    const failures: BulkAddFailure[] = [];
+
+    const existingPatientMapByChartNumber = new Map(allPatients.map(p => [p.chartNumber, p]));
+    const chartNumbersInFile = new Set<string>();
+
+    try {
+      // 1단계: 검증 및 분류
+      for (const data of newPatientsData) {
+          const name = String(data.name || '').trim();
+          const chartNumber = data.chartNumber ? String(data.chartNumber).trim() : '';
+
+          if (!name) {
+              failures.push({ name: '(이름 없음)', chartNumber, reason: '환자 이름이 비어있습니다.' });
+              continue;
+          }
+
+          if (chartNumber) {
+              if(chartNumbersInFile.has(chartNumber)) {
+                  failures.push({ name, chartNumber, reason: '엑셀 파일 내 중복된 차트번호입니다.' });
+                  continue;
+              }
+              chartNumbersInFile.add(chartNumber);
+          }
+
+          const existingPatient = chartNumber ? existingPatientMapByChartNumber.get(chartNumber) : undefined;
+
+          if (existingPatient) { // Update case
+              const updatedPatient = { ...existingPatient };
+              if(data.name) updatedPatient.name = data.name;
+              if(data.dob) updatedPatient.dob = data.dob;
+              if(data.gender !== undefined) updatedPatient.gender = data.gender;
+              if(data.address !== undefined) updatedPatient.address = data.address;
+              if(data.phone !== undefined) updatedPatient.phone = data.phone;
+              if(data.details !== undefined) updatedPatient.referralPath = data.details;
+              if(data.registrationDate) updatedPatient.registrationDate = data.registrationDate;
+              updatedPatients.push(updatedPatient);
+          } else { // New patient case
+              const tempPatient: Patient = {
+                  id: 0, // 임시 ID, API에서 할당됨
+                  name,
+                  chartNumber: chartNumber || '', // API에서 생성
+                  status: PatientStatus.COMPLETED,
+                  time: '',
+                  details: '일괄등록',
+                  dob: data.dob,
+                  gender: data.gender,
+                  address: data.address,
+                  phone: data.phone,
+                  referralPath: data.details || '',
+                  registrationDate: data.registrationDate || new Date().toISOString().split('T')[0],
+              };
+              newPatients.push(tempPatient);
+          }
+      }
+
+      // 2단계: Supabase에 저장
+      const savedNewPatients: Patient[] = [];
+
+      // 새 환자 저장
+      for (const patient of newPatients) {
+          try {
+              const saved = await api.createPatient(patient);
+              savedNewPatients.push(saved);
+          } catch (error) {
+              console.error(`환자 저장 실패: ${patient.name}`, error);
+              failures.push({ name: patient.name, chartNumber: patient.chartNumber, reason: '데이터베이스 저장 오류' });
+          }
+      }
+
+      // 기존 환자 업데이트
+      for (const patient of updatedPatients) {
+          try {
+              await api.updatePatient(patient.id, patient);
+          } catch (error) {
+              console.error(`환자 업데이트 실패: ${patient.name}`, error);
+              failures.push({ name: patient.name, chartNumber: patient.chartNumber || '', reason: '데이터베이스 업데이트 오류' });
+          }
+      }
+
+      // 3단계: 로컬 state 업데이트
+      if (savedNewPatients.length > 0 || updatedPatients.length > 0) {
+          setAllPatients(prevPatients => {
+              const updatedPatientMap = new Map(updatedPatients.map(p => [p.id, p]));
+              const processedPatients = prevPatients.map(p => updatedPatientMap.get(p.id) || p);
+              return [...processedPatients, ...savedNewPatients];
+          });
+      }
+
+      setBulkAddResult({ new: savedNewPatients.length, updated: updatedPatients.length, failures });
+      console.log(`✅ 일괄 등록 완료: 신규 ${savedNewPatients.length}명, 업데이트 ${updatedPatients.length}명, 실패 ${failures.length}명`);
+
+    } catch (error) {
+      console.error('❌ 일괄 등록 오류:', error);
+      alert('일괄 등록 중 오류가 발생했습니다.');
+    }
+  };
+
+
+  const movePatient = (patientToMove: Patient) => {
+    const currentTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+    if (patientToMove.status === PatientStatus.WAITING_CONSULTATION) {
+        setConsultationWaitingList(prev => prev.filter(p => p.id !== patientToMove.id));
+        const updatedPatient = {
+            ...patientToMove,
+            status: PatientStatus.WAITING_TREATMENT,
+            time: currentTime,
+            details: '진료완료',
+        };
+        setTreatmentWaitingList(prev => [...prev, updatedPatient]);
+    } else if (patientToMove.status === PatientStatus.WAITING_TREATMENT) {
+        setTreatmentWaitingList(prev => prev.filter(p => p.id !== patientToMove.id));
+        const updatedPatient = {
+            ...patientToMove,
+            status: PatientStatus.WAITING_CONSULTATION,
+            time: currentTime,
+            details: '재진료요청',
+        };
+        setConsultationWaitingList(prev => [...prev, updatedPatient]);
+    }
+  };
+
+  const handlePatientDrop = (
+    draggedPatientId: number,
+    sourceListType: 'consultation' | 'treatment',
+    destinationListType: 'consultation' | 'treatment',
+    targetPatientId: number | null
+  ) => {
+    const sourceList = sourceListType === 'consultation' ? consultationWaitingList : treatmentWaitingList;
+    const setSourceList = sourceListType === 'consultation' ? setConsultationWaitingList : setTreatmentWaitingList;
+    const draggedPatient = sourceList.find(p => p.id === draggedPatientId);
+
+    if (!draggedPatient) return;
+
+    // Only allow reordering within the same list.
+    if (sourceListType === destinationListType) {
+        const list = [...sourceList];
+        const draggedIndex = list.findIndex(p => p.id === draggedPatientId);
+        list.splice(draggedIndex, 1);
+        const targetIndex = targetPatientId !== null ? list.findIndex(p => p.id === targetPatientId) : list.length;
+        list.splice(targetIndex, 0, draggedPatient);
+        setSourceList(list);
+    }
+  };
+
+  const handleOpenPaymentModal = (payment: Payment) => {
+    setSelectedPayment(payment);
+    openModal('payment', `${payment.patientName}님 수납 처리`);
+  };
+
+  const handleOpenReservationForPatient = (payment: Payment) => {
+    if (payment.reservationId) {
+        const allReservations: Reservation[] = Object.values(reservations)
+            .flatMap(docSlots => Object.values(docSlots))
+            .flatMap(timeSlots => Object.values(timeSlots))
+            .flat();
+        
+        const reservationToEdit = allReservations.find(r => r.id === payment.reservationId);
+        if (reservationToEdit) {
+            handleEditReservation(reservationToEdit);
+        } else {
+            alert('해당 예약을 찾을 수 없습니다. 삭제되었거나 변경되었을 수 있습니다.');
+        }
+    } else {
+        const patient = allPatients.find(p => p.id === payment.patientId);
+        if (patient) {
+            setPatientForNewReservation(patient);
+            openModal('reservation', `${patient.name}님 예약`, true);
+        } else {
+            alert('환자 정보를 찾을 수 없습니다.');
+        }
+    }
+  };
+
+  const handleCompletePayment = async (
+    originalPayment: Payment,
+    details: {
+      totalAmount: number;
+      items: PaymentItem[];
+      remainingAmount: number;
+      treatmentItems: TreatmentDetailItem[];
+    }
+  ) => {
+    try {
+      // Supabase에 결제 완료 저장
+      await api.completePayment(originalPayment.id, {
+        totalAmount: details.totalAmount,
+        paidAmount: details.totalAmount - details.remainingAmount,
+        remainingAmount: details.remainingAmount,
+        paymentMethods: details.items.map(item => ({
+          method: item.method,
+          amount: parseInt(item.amount, 10) || 0,
+        })),
+        treatmentItems: details.treatmentItems,
+      });
+
+      setPaymentsWaiting(prev => prev.filter(p => p.id !== originalPayment.id));
+
+      const newCompletedPayment: CompletedPayment = {
+          id: Date.now(),
+          paymentId: originalPayment.id,
+          patientId: originalPayment.patientId,
+          patientName: originalPayment.patientName,
+          patientChartNumber: originalPayment.patientChartNumber,
+          treatmentItems: details.treatmentItems,
+          totalAmount: details.totalAmount,
+          paidAmount: details.totalAmount - details.remainingAmount,
+          remainingAmount: details.remainingAmount,
+          paymentMethods: details.items.map(item => ({
+              method: item.method,
+              amount: parseInt(item.amount, 10) || 0,
+          })),
+          timestamp: new Date().toISOString(),
+      };
+
+      setCompletedPayments(prev => [newCompletedPayment, ...prev]);
+
+      closeModal();
+      const alertMessage = details.remainingAmount > 0
+        ? `수납 처리가 완료되었습니다. 미수금: ${details.remainingAmount.toLocaleString()}원`
+        : '수납 처리가 완료되었습니다.';
+      alert(alertMessage);
+      console.log('✅ 결제 완료 저장 완료');
+    } catch (error) {
+      console.error('❌ 결제 완료 처리 오류:', error);
+      alert('결제 처리 중 오류가 발생했습니다.');
+    }
+  };
+  
+  const handleFinishConsultation = async (patientId: number, destination: 'treatment' | 'payment') => {
+    const patient = allPatients.find(p => p.id === patientId);
+    if (!patient) {
+        alert("환자 정보를 찾을 수 없습니다.");
+        return;
+    }
+
+    // 1. Update consultation room to be available
+    setConsultationRooms(prevRooms =>
+        prevRooms.map(room =>
+            room.patientId === patientId
+            ? { ...room, status: 'available', patientId: undefined, patientName: undefined, patientDetails: undefined }
+            : room
+        )
+    );
+
+    // 2. Remove patient from the consultation waiting list
+    setConsultationWaitingList(prev => prev.filter(p => p.id !== patientId));
+
+    const currentTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+    if (destination === 'treatment') {
+        const patientForTreatment: Patient = {
+            ...patient,
+            status: PatientStatus.WAITING_TREATMENT,
+            time: currentTime,
+            details: '진료완료',
+        };
+        setTreatmentWaitingList(prev => [...prev, patientForTreatment]);
+        alert(`${patient.name}님을 치료 대기 목록으로 이동했습니다.`);
+    } else { // destination === 'payment'
+        try {
+          const newPayment: Payment = {
+              id: 0, // 임시 ID, API에서 생성됨
+              patientId: patient.id,
+              patientName: patient.name,
+              patientChartNumber: patient.chartNumber,
+              details: '진료비',
+              isPaid: false,
+          };
+
+          // Supabase에 결제 생성
+          const paymentId = await api.createPayment(newPayment);
+
+          setPaymentsWaiting(prev => [...prev, { ...newPayment, id: paymentId }]);
+          alert(`${patient.name}님을 수납 대기 목록으로 이동했습니다.`);
+          console.log('✅ 결제 생성 완료');
+        } catch (error) {
+          console.error('❌ 결제 생성 오류:', error);
+          alert('수납 대기 추가 중 오류가 발생했습니다.');
+        }
+    }
+  };
+
+  const handleAssignPatientToConsultationRoom = (patientId: number, roomId: number, sourceListType: 'consultation' | 'treatment') => {
+    const sourceList = sourceListType === 'consultation' ? consultationWaitingList : treatmentWaitingList;
+    const setSourceList = sourceListType === 'consultation' ? setConsultationWaitingList : setTreatmentWaitingList;
+
+    const patientToAssign = sourceList.find(p => p.id === patientId);
+    const targetRoom = consultationRooms.find(r => r.id === roomId);
+
+    if (!patientToAssign) {
+      alert('대기 목록에서 환자를 찾을 수 없습니다.');
+      return;
+    }
+    if (!targetRoom) {
+      alert('진료실 정보를 찾을 수 없습니다.');
+      return;
+    }
+    if (targetRoom.status !== 'available') {
+      alert(`${targetRoom.roomName}은 현재 사용 중입니다.`);
+      return;
+    }
+
+    // 1. Remove patient from the correct waiting list
+    setSourceList(prev => prev.filter(p => p.id !== patientId));
+
+    // 2. Update the consultation room
+    setConsultationRooms(prev => prev.map(room => {
+      if (room.id === roomId) {
+        return {
+          ...room,
+          status: 'in_consultation',
+          patientId: patientToAssign.id,
+          patientName: patientToAssign.name,
+          patientDetails: sourceListType === 'treatment' ? '치료실->재진료' : patientToAssign.details,
+        };
+      }
+      return room;
+    }));
+
+    alert(`${patientToAssign.name}님을 ${targetRoom.roomName}에 배정했습니다.`);
+  };
+
+  const handleMovePatientToPayment = async (patientId: number, sourceList: 'consultation' | 'treatment' | 'treatment_room') => {
+    let patientToMove: Patient | undefined;
+
+    if (sourceList === 'consultation') {
+        patientToMove = consultationWaitingList.find(p => p.id === patientId);
+        if (patientToMove) setConsultationWaitingList(prev => prev.filter(p => p.id !== patientId));
+    } else if (sourceList === 'treatment') {
+        patientToMove = treatmentWaitingList.find(p => p.id === patientId);
+        if (patientToMove) setTreatmentWaitingList(prev => prev.filter(p => p.id !== patientId));
+    } else { // from treatment room
+        patientToMove = allPatients.find(p => p.id === patientId);
+    }
+
+    if (!patientToMove) {
+        alert("환자 정보를 찾을 수 없습니다.");
+        return;
+    }
+
+    try {
+      const newPayment: Payment = {
+        id: 0, // 임시 ID, API에서 생성됨
+        patientId: patientToMove.id,
+        patientName: patientToMove.name,
+        patientChartNumber: patientToMove.chartNumber,
+        details: '치료비',
+        isPaid: false,
+      };
+
+      const paymentId = await api.createPayment(newPayment);
+      setPaymentsWaiting(prev => [...prev, { ...newPayment, id: paymentId }]);
+      alert(`${patientToMove.name}님을 수납 대기 목록으로 이동했습니다.`);
+      console.log('✅ 결제 생성 완료');
+    } catch (error) {
+      console.error('❌ 결제 생성 오류:', error);
+      alert('수납 대기 추가 중 오류가 발생했습니다.');
+    }
+  };
+
+
+  const handleMovePatientFromPaymentToWaiting = (paymentId: number, destination: 'consultation' | 'treatment') => {
+    const paymentToMove = paymentsWaiting.find(p => p.id === paymentId);
+    if (!paymentToMove) {
+        alert("수납 대기 목록에서 해당 항목을 찾을 수 없습니다.");
+        return;
+    }
+
+    const patientInfo = allPatients.find(p => p.id === paymentToMove.patientId);
+    if (!patientInfo) {
+        alert("환자 정보를 찾을 수 없습니다.");
+        return;
+    }
+
+    setPaymentsWaiting(prev => prev.filter(p => p.id !== paymentId));
+
+    const currentTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    
+    if (destination === 'consultation') {
+        const patientForConsultation: Patient = {
+            ...patientInfo,
+            status: PatientStatus.WAITING_CONSULTATION,
+            time: currentTime,
+            details: '수납->진료',
+        };
+        setConsultationWaitingList(prev => [...prev, patientForConsultation]);
+        alert(`${patientInfo.name}님을 진료 대기 목록으로 이동했습니다.`);
+    } else { // destination === 'treatment'
+        const patientForTreatment: Patient = {
+            ...patientInfo,
+            status: PatientStatus.WAITING_TREATMENT,
+            time: currentTime,
+            details: '수납->치료',
+        };
+        setTreatmentWaitingList(prev => [...prev, patientForTreatment]);
+        alert(`${patientInfo.name}님을 치료 대기 목록으로 이동했습니다.`);
+    }
+  };
+
+  const updateMedicalStaff = async (updatedStaff: MedicalStaff) => {
+      try {
+          await api.updateMedicalStaff(updatedStaff.id, updatedStaff);
+          setMedicalStaff(prev => prev.map(staff => staff.id === updatedStaff.id ? updatedStaff : staff));
+          alert(`${updatedStaff.name}님의 정보가 수정되었습니다.`);
+      } catch (error) {
+          console.error('의료진 수정 오류:', error);
+          alert('의료진 정보 수정 중 오류가 발생했습니다.');
+      }
+  };
+
+  const addMedicalStaff = async (newStaffData: Omit<MedicalStaff, 'id'>) => {
+      try {
+          const newStaff = await api.createMedicalStaff(newStaffData);
+          setMedicalStaff(prev => [...prev, newStaff]);
+          alert(`${newStaff.name}님을 신규 의료진으로 등록했습니다.`);
+      } catch (error) {
+          console.error('의료진 추가 오류:', error);
+          alert('의료진 추가 중 오류가 발생했습니다.');
+      }
+  };
+
+  const deleteMedicalStaff = async (staffId: number) => {
+      const staffToDelete = medicalStaff.find(s => s.id === staffId);
+      if (!staffToDelete) return;
+
+      try {
+          await api.deleteMedicalStaff(staffId);
+          setMedicalStaff(prev => prev.filter(staff => staff.id !== staffId));
+          alert(`${staffToDelete.name}님이 삭제되었습니다.`);
+      } catch (error) {
+          console.error('의료진 삭제 오류:', error);
+          alert('의료진 삭제 중 오류가 발생했습니다.');
+      }
+  };
+
+  const updateStaff = async (updatedStaffMember: Staff) => {
+      try {
+          await api.updateStaff(updatedStaffMember.id, updatedStaffMember);
+          setStaff(prev => prev.map(s => s.id === updatedStaffMember.id ? updatedStaffMember : s));
+          alert(`${updatedStaffMember.name}님의 정보가 수정되었습니다.`);
+      } catch (error) {
+          console.error('스태프 수정 오류:', error);
+          alert('스태프 정보 수정 중 오류가 발생했습니다.');
+      }
+  };
+
+  const addStaff = async (newStaffData: Omit<Staff, 'id'>) => {
+      try {
+          const newStaffMember = await api.createStaff(newStaffData);
+          setStaff(prev => [...prev, newStaffMember]);
+          alert(`${newStaffMember.name}님을 신규 스태프로 등록했습니다.`);
+      } catch (error) {
+          console.error('스태프 추가 오류:', error);
+          alert('스태프 추가 중 오류가 발생했습니다.');
+      }
+  };
+
+  const deleteStaff = async (staffId: number) => {
+      const staffToDelete = staff.find(s => s.id === staffId);
+      if (!staffToDelete) return;
+
+      try {
+          await api.deleteStaff(staffId);
+          setStaff(prev => prev.filter(s => s.id !== staffId));
+          alert(`${staffToDelete.name}님이 삭제되었습니다.`);
+      } catch (error) {
+          console.error('스태프 삭제 오류:', error);
+          alert('스태프 삭제 중 오류가 발생했습니다.');
+      }
+  };
+
+  const updateUncoveredCategories = async (categories: UncoveredCategories) => {
+      try {
+          await api.saveUncoveredCategories(categories);
+          setUncoveredCategories(categories);
+          alert('비급여 카테고리가 저장되었습니다.');
+      } catch (error) {
+          console.error('비급여 카테고리 저장 오류:', error);
+          alert('비급여 카테고리 저장 중 오류가 발생했습니다.');
+      }
+  };
+
+  const handleUpdateTreatmentRooms = async (updatedRooms: TreatmentRoom[]) => {
+      // 로컬 상태 업데이트
+      setTreatmentRooms(updatedRooms);
+
+      // 변경된 방 찾아서 DB에 저장
+      try {
+          // 이전 상태와 비교하여 변경된 방만 찾기
+          const currentRooms = treatmentRooms;
+
+          for (const updatedRoom of updatedRooms) {
+              const oldRoom = currentRooms.find(r => r.id === updatedRoom.id);
+
+              // 방 상태가 변경되었는지 확인 (간단한 JSON 비교)
+              if (oldRoom && JSON.stringify(oldRoom) !== JSON.stringify(updatedRoom)) {
+                  console.log(`🔄 치료실 ${updatedRoom.name} 상태 변경 - DB 저장 중...`);
+                  await api.updateTreatmentRoom(updatedRoom.id, updatedRoom);
+              }
+          }
+      } catch (error) {
+          console.error('❌ 치료실 업데이트 오류:', error);
+          // 오류가 나도 로컬 상태는 유지 (사용자 경험을 위해)
+      }
+  };
+
+  const handleCompleteActing = (doctorId: string, actingId: string) => {
+    const actingQueue = actingQueues[doctorId];
+    const acting = actingQueue.find(a => a.id === actingId);
+
+    if (!acting) return;
+
+    if (!window.confirm(`${acting.patientName}님의 '${acting.type}' 액팅을 완료하고 대기열에서 제거하시겠습니까?`)) {
+        return;
+    }
+
+    if (acting.type === '침') {
+        const patientRoom = treatmentRooms.find(r => r.patientId === acting.patientId);
+        if (!patientRoom) {
+            alert("해당 환자가 배정된 치료실을 찾을 수 없습니다. 치료실에 먼저 배정해주세요.");
+            return;
+        }
+
+        const treatmentToStart = patientRoom.sessionTreatments.find(t => t.name === '침' && t.status !== 'running' && t.status !== 'completed');
+        if (!treatmentToStart) {
+            alert("해당 환자의 '침' 치료 항목을 찾을 수 없거나 이미 진행중/완료 상태입니다.");
+            return;
+        }
+
+        // Pre-checks passed, now update both states
+        setTreatmentRooms(prevRooms => prevRooms.map(room => {
+            if (room.id === patientRoom.id) {
+                const newTreatments = room.sessionTreatments.map(tx => {
+                    if (tx.id === treatmentToStart.id) {
+                        return { ...tx, status: 'running' as const, startTime: new Date().toISOString(), elapsedSeconds: 0 };
+                    }
+                    return tx;
+                });
+                return { ...room, sessionTreatments: newTreatments };
+            }
+            return room;
+        }));
+        
+        setActingQueues(prevQueues => ({
+            ...prevQueues,
+            [doctorId]: prevQueues[doctorId].filter(a => a.id !== actingId)
+        }));
+
+    } else {
+        // For other actings, just remove from the queue
+        setActingQueues(prevQueues => ({
+            ...prevQueues,
+            [doctorId]: prevQueues[doctorId].filter(a => a.id !== actingId)
+        }));
+    }
+  };
+
+  const addActing = (doctorId: string, type: '대기' | '초진' | '상담') => {
+    let patientName: string;
+    let duration: number;
+    let actingType: ActingType;
+
+    switch (type) {
+        case '초진':
+            patientName = '';
+            duration = 30;
+            actingType = '초진';
+            break;
+        case '상담':
+            patientName = '';
+            duration = 25;
+            actingType = '약상담';
+            break;
+        case '대기':
+            patientName = '';
+            duration = 0;
+            actingType = '대기';
+            break;
+        default:
+            return;
+    }
+
+    const newActing: Acting = {
+        id: `act-manual-${Date.now()}`,
+        patientId: -1, // Placeholder patient ID
+        patientName: patientName,
+        type: actingType,
+        duration: duration,
+        source: 'manual',
+    };
+    
+    setActingQueues(prevQueues => {
+        const newQueues = { ...prevQueues };
+        const currentQueue = newQueues[doctorId] || [];
+        newQueues[doctorId] = [newActing, ...currentQueue];
+        return newQueues;
+    });
+  };
+
+  const deleteActing = (doctorId: string, actingId: string) => {
+    setActingQueues(prev => ({
+        ...prev,
+        [doctorId]: prev[doctorId].filter(a => a.id !== actingId)
+    }));
+  };
+
+  const handleEditActing = (doctorId: string, acting: Acting) => {
+    setActingToEdit({ doctorId, acting });
+    openModal('editActing', '액팅 편집');
+  };
+
+  const updateActing = (doctorId: string, actingId: string, updatedData: { patientName: string; duration: number; memo: string; }) => {
+    setActingQueues(prev => ({
+        ...prev,
+        [doctorId]: prev[doctorId].map(a => 
+            a.id === actingId ? { ...a, ...updatedData } : a
+        )
+    }));
+    closeModal();
+  };
+
+  const EditActingForm = () => {
+    if (!actingToEdit) return null;
+    const { acting, doctorId } = actingToEdit;
+    
+    const [formData, setFormData] = useState({
+        patientName: acting.patientName,
+        type: acting.type,
+        duration: acting.duration,
+        memo: acting.memo || '',
+    });
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        const { name, value } = e.target;
+        const targetType = (e.target as HTMLInputElement).type;
+        setFormData(prev => ({
+            ...prev,
+            [name]: targetType === 'number' ? parseInt(value, 10) || 0 : value,
+        }));
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const { type, ...dataToUpdate } = formData;
+        updateActing(doctorId, acting.id, dataToUpdate);
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+                <label className="block text-sm font-medium text-gray-700">액팅 종류</label>
+                <div className="mt-1 block w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-100 text-gray-600 sm:text-sm">
+                    {formData.type}
+                </div>
+            </div>
+            <div>
+                <label htmlFor="patientName" className="block text-sm font-medium text-gray-700">환자 이름</label>
+                <input
+                    type="text"
+                    id="patientName"
+                    name="patientName"
+                    value={formData.patientName}
+                    onChange={handleChange}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-clinic-secondary focus:border-clinic-secondary sm:text-sm"
+                />
+            </div>
+            <div>
+                <label htmlFor="duration" className="block text-sm font-medium text-gray-700">예상 시간 (분)</label>
+                <input
+                    type="number"
+                    id="duration"
+                    name="duration"
+                    value={formData.duration}
+                    onChange={handleChange}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-clinic-secondary focus:border-clinic-secondary sm:text-sm"
+                />
+            </div>
+            <div>
+                <label htmlFor="memo" className="block text-sm font-medium text-gray-700">메모</label>
+                <textarea
+                    id="memo"
+                    name="memo"
+                    rows={3}
+                    value={formData.memo}
+                    onChange={handleChange}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-clinic-secondary focus:border-clinic-secondary sm:text-sm"
+                    placeholder="액팅 관련 메모를 입력하세요..."
+                ></textarea>
+            </div>
+            <div className="flex justify-end pt-4 border-t mt-4 space-x-2">
+                <button type="button" onClick={closeModal} className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-md hover:bg-gray-300 transition-colors">취소</button>
+                <button type="submit" className="px-6 py-2 bg-clinic-primary text-white font-semibold rounded-md hover:bg-clinic-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-clinic-secondary transition-colors">저장</button>
+            </div>
+        </form>
+    );
+  };
+
+
+  const renderModalContent = () => {
+    switch (modalType) {
+      case 'reservation':
+        return <ReservationModal 
+          reservations={reservations}
+          addNewReservation={addNewReservation}
+          updateReservation={updateReservation}
+          cancelReservation={cancelReservation}
+          deleteReservation={deleteReservation}
+          closeModal={closeModal}
+          allPatients={activePatients}
+          setModalWide={setIsModalWide}
+          setModalTitle={setModalTitle}
+          initialReservationForEdit={editingReservation}
+          initialPatientForNew={patientForNewReservation}
+        />;
+      case 'newPatient':
+        return <NewPatientForm addNewPatient={addNewPatient} onClose={closeModal} />;
+      case 'patientSearch':
+        return <PatientSearch 
+          addPatientToConsultation={addPatientToConsultation} 
+          addPatientToTreatment={addPatientToTreatment}
+          allPatients={activePatients}
+          updatePatientInfo={updatePatientInfo}
+          deletePatient={handleRequestDeletePatient}
+        />;
+      case 'payment':
+        return <PaymentModal 
+          payment={selectedPayment}
+          onClose={closeModal}
+          onComplete={handleCompletePayment}
+          uncoveredCategories={uncoveredCategories}
+        />;
+      case 'dailyPayments':
+        return <DailyPaymentSummary completedPayments={completedPayments} />;
+      case 'stats':
+        return <p>통계 정보가 여기에 표시됩니다.</p>;
+      case 'settings':
+        return <Settings
+          addBulkPatients={addBulkPatients}
+          allPatients={activePatients}
+          deletePatient={handleRequestDeletePatient}
+          deletedPatients={deletedPatients}
+          restorePatient={restorePatient}
+          medicalStaff={medicalStaff}
+          updateMedicalStaff={updateMedicalStaff}
+          addMedicalStaff={addMedicalStaff}
+          deleteMedicalStaff={deleteMedicalStaff}
+          staff={staff}
+          updateStaff={updateStaff}
+          addStaff={addStaff}
+          deleteStaff={deleteStaff}
+          uncoveredCategories={uncoveredCategories}
+          updateUncoveredCategories={updateUncoveredCategories}
+        />;
+      case 'editActing':
+        return <EditActingForm />;
+      default:
+        return null;
+    }
+  };
+  
+  const handleLogin = (id: string, pass: string) => {
+    const user = USERS.find(u => u.id === id && u.password === pass);
+    if (user) {
+      setCurrentUser(user);
+    } else {
+      alert('등록된 사용자가 아닙니다.');
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+  };
+
+  if (!currentUser) {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
+
+
+  return (
+    <div className="flex flex-col h-screen text-clinic-text-primary overflow-hidden">
+      {currentView === 'dashboard' && (
+        <>
+          <Header 
+            onOpenModal={openModal}
+            onNavigate={setCurrentView}
+            currentUser={currentUser}
+            onLogout={handleLogout}
+          />
+          <main className="flex-grow p-4 lg:p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4 lg:gap-6 min-h-0">
+            {/* 1. 예약현황 */}
+            <div className="xl:col-span-1 flex flex-col min-h-0">
+              <ReservationStatus 
+                reservations={reservations} 
+                onEditReservation={handleEditReservation} 
+                onPatientArrival={handlePatientArrival} 
+              />
+            </div>
+            
+            {/* 2. 진료실현황, 진료대기 */}
+            <div className="xl:col-span-1 flex flex-col gap-4 lg:gap-6">
+              <ConsultationStatus 
+                rooms={consultationRooms}
+                onFinishConsultation={handleFinishConsultation}
+                onAssignPatient={handleAssignPatientToConsultationRoom}
+              />
+              <WaitingList
+                title="진료 대기"
+                icon="fa-solid fa-user-doctor"
+                list={consultationWaitingList}
+                listType="consultation"
+                onPatientClick={movePatient}
+                onPatientDrop={handlePatientDrop}
+                onMoveToPayment={(id) => handleMovePatientToPayment(id, 'consultation')}
+              />
+            </div>
+            
+            {/* 3. 치료대기 */}
+            <div className="xl:col-span-1 flex flex-col min-h-0">
+              <WaitingList
+                title="치료 대기" 
+                icon="fa-solid fa-bed-pulse"
+                list={treatmentWaitingList}
+                listType="treatment"
+                onPatientClick={movePatient}
+                onPatientDrop={handlePatientDrop}
+                onMoveToPayment={(id) => handleMovePatientToPayment(id, 'treatment')}
+              />
+            </div>
+
+            {/* 4. 치료실 현황 */}
+            <div className="xl:col-span-1 flex flex-col min-h-0">
+              <TreatmentRoomStatus treatmentRooms={treatmentRooms} />
+            </div>
+            
+            {/* 5. 수납및예약 */}
+            <div className="xl:col-span-1 flex flex-col min-h-0">
+              <PaymentStatus 
+                  payments={paymentsWaiting} 
+                  onPaymentClick={handleOpenPaymentModal}
+                  onReservationClick={handleOpenReservationForPatient} 
+                  onMoveToWaiting={handleMovePatientFromPaymentToWaiting}
+              />
+            </div>
+          </main>
+        </>
+      )}
+
+      {currentView === 'treatment' && (
+        <TreatmentView
+          treatmentRooms={treatmentRooms}
+          waitingList={treatmentWaitingList}
+          onNavigateBack={() => setCurrentView('dashboard')}
+          onUpdateRooms={handleUpdateTreatmentRooms}
+          onUpdateWaitingList={setTreatmentWaitingList}
+          onMovePatientToPayment={(id) => handleMovePatientToPayment(id, 'treatment_room')}
+          allPatients={allPatients}
+          onUpdatePatientDefaultTreatments={updatePatientDefaultTreatments}
+        />
+      )}
+
+      {currentView === 'acting' && (
+        <ActingManagementView
+            actingQueues={actingQueues}
+            onQueueUpdate={setActingQueues}
+            onNavigateBack={() => setCurrentView('dashboard')}
+            treatmentRooms={treatmentRooms}
+            allPatients={allPatients}
+            onCompleteActing={handleCompleteActing}
+            onAddActing={addActing}
+            onDeleteActing={deleteActing}
+            onEditActing={handleEditActing}
+        />
+      )}
+
+      <Modal isOpen={modalType !== null} onClose={closeModal} title={modalTitle} wide={isModalWide}>
+        {renderModalContent()}
+      </Modal>
+
+      {/* Patient Delete Confirmation Modal */}
+      <Modal
+          isOpen={patientIdToDelete !== null}
+          onClose={handleCancelDelete}
+          title="환자 정보 삭제 확인"
+      >
+          {patientToDeleteInfo && (
+              <div className="text-center p-4">
+                  <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                      <i className="fa-solid fa-triangle-exclamation text-2xl text-red-600"></i>
+                  </div>
+                  <h3 className="text-lg leading-6 font-semibold text-gray-900">
+                      정말로 삭제하시겠습니까?
+                  </h3>
+                  <div className="mt-2">
+                      <p className="text-sm text-gray-600">
+                          <span className="font-bold">{patientToDeleteInfo.name}</span>
+                          ({patientToDeleteInfo.chartNumber || '차트번호 없음'}) 님의 정보와 관련된 모든 예약 및 대기 내역이 삭제 처리됩니다.
+                      </p>
+                      <p className="text-sm font-bold text-gray-700 mt-2">
+                          삭제된 정보는 '환경 설정'에서 복구할 수 있습니다.
+                      </p>
+                  </div>
+                  <div className="flex justify-center space-x-4 mt-6">
+                      <button
+                          type="button"
+                          onClick={handleCancelDelete}
+                          className="px-8 py-2 bg-gray-200 text-gray-800 font-semibold rounded-md hover:bg-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400"
+                      >
+                          취소
+                      </button>
+                      <button
+                          type="button"
+                          onClick={handleConfirmDelete}
+                          className="px-8 py-2 bg-red-600 text-white font-semibold rounded-md hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                      >
+                          삭제
+                      </button>
+                  </div>
+              </div>
+          )}
+      </Modal>
+
+      {/* Bulk Add Result Modal */}
+      <Modal
+        isOpen={bulkAddResult !== null}
+        onClose={() => setBulkAddResult(null)}
+        title="환자 일괄등록 결과"
+      >
+        {bulkAddResult && (
+            <div className="space-y-4">
+                <div className="flex justify-around text-center p-4 bg-gray-50 rounded-lg">
+                    <div>
+                        <p className="text-sm text-gray-500">신규 등록</p>
+                        <p className="text-3xl font-bold text-green-600">{bulkAddResult.new}건</p>
+                    </div>
+                    <div>
+                        <p className="text-sm text-gray-500">정보 업데이트</p>
+                        <p className="text-3xl font-bold text-blue-600">{bulkAddResult.updated}건</p>
+                    </div>
+                    <div>
+                        <p className="text-sm text-gray-500">등록 실패</p>
+                        <p className="text-3xl font-bold text-red-600">{bulkAddResult.failures.length}건</p>
+                    </div>
+                </div>
+                
+                {bulkAddResult.failures.length > 0 && (
+                    <div className="pt-4 border-t">
+                        <h4 className="font-semibold text-lg mb-2">실패 내역</h4>
+                        <div className="max-h-60 overflow-y-auto bg-white rounded-md border">
+                            <table className="w-full text-sm text-left">
+                                <thead className="text-xs text-gray-700 uppercase bg-gray-100 sticky top-0">
+                                    <tr>
+                                        <th className="px-4 py-2">이름</th>
+                                        <th className="px-4 py-2">차트번호</th>
+                                        <th className="px-4 py-2">실패 사유</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {bulkAddResult.failures.map((fail, index) => (
+                                        <tr key={index} className="bg-white border-b last:border-b-0">
+                                            <td className="px-4 py-2 font-medium">{fail.name}</td>
+                                            <td className="px-4 py-2">{fail.chartNumber}</td>
+                                            <td className="px-4 py-2 text-red-700">{fail.reason}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+                
+                <div className="flex justify-end pt-4 mt-4">
+                    <button
+                        onClick={() => setBulkAddResult(null)}
+                        className="px-6 py-2 bg-clinic-primary text-white font-semibold rounded-md hover:bg-clinic-secondary"
+                    >
+                        확인
+                    </button>
+                </div>
+            </div>
+        )}
+      </Modal>
+    </div>
+  );
+};
+
+export default App;
