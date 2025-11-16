@@ -63,7 +63,7 @@ const App: React.FC = () => {
   const treatmentItemsHook = useTreatmentItems(currentUser);
 
   // Consultation Rooms
-  const consultationRoomsHook = useConsultationRooms();
+  const consultationRoomsHook = useConsultationRooms({ medicalStaff: staffHook.medicalStaff });
 
   // View and Modal State
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
