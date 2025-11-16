@@ -16,6 +16,12 @@ export interface DefaultTreatment {
   memo?: string;
 }
 
+export interface TreatmentItem {
+  id: number;
+  name: string;
+  defaultDuration: number; // in minutes
+}
+
 export interface Patient {
   id: number;
   name: string;

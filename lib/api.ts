@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { Patient, Reservation, Payment, DefaultTreatment, Acting, CompletedPayment, MedicalStaff, Staff, UncoveredCategories, TreatmentRoom, SessionTreatment } from '../types';
+import { Patient, Reservation, Payment, DefaultTreatment, Acting, CompletedPayment, MedicalStaff, Staff, UncoveredCategories, TreatmentRoom, SessionTreatment, TreatmentItem } from '../types';
 
 /**
  * 환자 관련 API
@@ -1105,4 +1105,97 @@ export async function deleteTreatmentRoom(roomId: number): Promise<void> {
     console.error('치료실 삭제 오류:', error);
     throw error;
   }
+}
+
+/**
+ * 치료항목 관리 API
+ */
+
+// 치료항목 조회
+export async function fetchTreatmentItems(): Promise<TreatmentItem[]> {
+  const { data, error } = await supabase
+    .from('treatment_items')
+    .select('*')
+    .order('name');
+
+  if (error) {
+    console.error('치료항목 조회 오류:', error);
+    throw error;
+  }
+
+  return (data || []).map(item => ({
+    id: item.id,
+    name: item.name,
+    defaultDuration: item.default_duration
+  }));
+}
+
+// 치료항목 생성
+export async function createTreatmentItem(item: Omit<TreatmentItem, 'id'>): Promise<TreatmentItem> {
+  const { data, error } = await supabase
+    .from('treatment_items')
+    .insert({
+      name: item.name,
+      default_duration: item.defaultDuration
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('치료항목 추가 오류:', error);
+    throw error;
+  }
+
+  return {
+    id: data.id,
+    name: data.name,
+    defaultDuration: data.default_duration
+  };
+}
+
+// 치료항목 수정
+export async function updateTreatmentItem(id: number, item: Omit<TreatmentItem, 'id'>): Promise<TreatmentItem> {
+  const { data, error } = await supabase
+    .from('treatment_items')
+    .update({
+      name: item.name,
+      default_duration: item.defaultDuration
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('치료항목 수정 오류:', error);
+    throw error;
+  }
+
+  return {
+    id: data.id,
+    name: data.name,
+    defaultDuration: data.default_duration
+  };
+}
+
+// 치료항목 삭제
+export async function deleteTreatmentItem(id: number): Promise<void> {
+  const { data, error, count } = await supabase
+    .from('treatment_items')
+    .delete()
+    .eq('id', id)
+    .select();
+
+  if (error) {
+    console.error('❌ 치료항목 삭제 오류:', error);
+    throw error;
+  }
+
+  // 삭제된 행이 없으면 에러 발생
+  if (!data || data.length === 0) {
+    const permissionError = new Error('치료항목 삭제 권한이 없거나 해당 항목이 존재하지 않습니다. Supabase RLS 정책을 확인하세요.');
+    console.error('❌ 삭제 실패:', permissionError.message);
+    throw permissionError;
+  }
+
+  console.log('✅ 치료항목 삭제 성공:', data);
 }

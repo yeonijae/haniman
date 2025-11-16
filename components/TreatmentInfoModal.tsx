@@ -1,18 +1,18 @@
 
 
 import React, { useState, useEffect, useRef } from 'react';
-import { TreatmentRoom, SessionTreatment } from '../types';
+import { TreatmentRoom, SessionTreatment, TreatmentItem } from '../types';
 import Modal from './Modal';
-import { AVAILABLE_TREATMENTS, BASIC_TREATMENTS } from '../constants';
 
 interface TreatmentInfoModalProps {
     isOpen: boolean;
     onClose: () => void;
     room: TreatmentRoom;
     onSave: (roomId: number, updatedTreatments: SessionTreatment[]) => void;
+    treatmentItems: TreatmentItem[];
 }
 
-const TreatmentInfoModal: React.FC<TreatmentInfoModalProps> = ({ isOpen, onClose, room, onSave }) => {
+const TreatmentInfoModal: React.FC<TreatmentInfoModalProps> = ({ isOpen, onClose, room, onSave, treatmentItems }) => {
     const [treatments, setTreatments] = useState<SessionTreatment[]>([]);
     const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
     const addMenuRef = useRef<HTMLDivElement>(null);
@@ -21,18 +21,17 @@ const TreatmentInfoModal: React.FC<TreatmentInfoModalProps> = ({ isOpen, onClose
         if (room) {
             const initialTreatments = (room.sessionTreatments && room.sessionTreatments.length > 0)
                 ? room.sessionTreatments
-                : BASIC_TREATMENTS.map((dt, index) => ({
+                : treatmentItems.slice(0, 3).map((dt, index) => ({
                     id: `tx-${room.patientId}-${Date.now()}-${index}`,
                     name: dt.name,
-                    duration: dt.duration,
+                    duration: dt.defaultDuration,
                     status: 'pending' as const,
                     elapsedSeconds: 0,
-                    memo: dt.memo,
                 }));
 
             setTreatments(JSON.parse(JSON.stringify(initialTreatments)));
         }
-    }, [room]);
+    }, [room, treatmentItems]);
     
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -76,7 +75,9 @@ const TreatmentInfoModal: React.FC<TreatmentInfoModalProps> = ({ isOpen, onClose
         onSave(room.id, treatments);
     };
 
-    const treatmentsToAdd = AVAILABLE_TREATMENTS.filter(at => !treatments.some(lt => lt.name === at.name));
+    const treatmentsToAdd = treatmentItems
+        .filter(ti => !treatments.some(lt => lt.name === ti.name))
+        .map(ti => ({ name: ti.name, duration: ti.defaultDuration }));
 
     if (!room) return null;
 

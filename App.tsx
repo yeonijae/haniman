@@ -27,6 +27,7 @@ import { usePayments } from './hooks/usePayments';
 import { useTreatmentRooms } from './hooks/useTreatmentRooms';
 import { useActingQueues } from './hooks/useActingQueues';
 import { useStaff } from './hooks/useStaff';
+import { useTreatmentItems } from './hooks/useTreatmentItems';
 import { useConsultationRooms } from './hooks/useConsultationRooms';
 
 // Types
@@ -59,6 +60,7 @@ const App: React.FC = () => {
 
   // Staff
   const staffHook = useStaff(currentUser);
+  const treatmentItemsHook = useTreatmentItems(currentUser);
 
   // Consultation Rooms
   const consultationRoomsHook = useConsultationRooms();
@@ -410,6 +412,10 @@ const App: React.FC = () => {
           deleteStaff={staffHook.deleteStaff}
           uncoveredCategories={staffHook.uncoveredCategories}
           updateUncoveredCategories={staffHook.updateUncoveredCategories}
+          treatmentItems={treatmentItemsHook.treatmentItems}
+          addTreatmentItem={treatmentItemsHook.addTreatmentItem}
+          updateTreatmentItem={treatmentItemsHook.updateTreatmentItem}
+          deleteTreatmentItem={treatmentItemsHook.deleteTreatmentItem}
         />;
       case 'editActing':
         return actingToEdit ? (
@@ -510,6 +516,7 @@ const App: React.FC = () => {
           onMovePatientToPayment={(id) => handleMovePatientToPayment(id, 'treatment_room')}
           allPatients={patients.allPatients}
           onUpdatePatientDefaultTreatments={patients.updatePatientDefaultTreatments}
+          treatmentItems={treatmentItemsHook.treatmentItems}
         />
       )}
 

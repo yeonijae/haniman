@@ -5,10 +5,9 @@
 
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { TreatmentRoom, RoomStatus, Patient, SessionTreatment, DefaultTreatment } from '../types';
+import { TreatmentRoom, RoomStatus, Patient, SessionTreatment, DefaultTreatment, TreatmentItem } from '../types';
 import TreatmentInfoModal from './TreatmentInfoModal';
 import DefaultTreatmentEditModal from './DefaultTreatmentEditModal';
-import { AVAILABLE_TREATMENTS, BASIC_TREATMENTS } from '../constants';
 import * as api from '../lib/api';
 
 const getStatusClasses = (status: RoomStatus): { border: string, bg: string, text: string } => {
@@ -249,7 +248,7 @@ const TreatmentProgressItem: React.FC<{
     );
 };
 
-const TreatmentBedCard: React.FC<{ 
+const TreatmentBedCard: React.FC<{
     room: TreatmentRoom;
     onStart: (treatmentId: string) => void;
     onPause: (treatmentId: string) => void;
@@ -264,15 +263,16 @@ const TreatmentBedCard: React.FC<{
     onDrop: (patientId: number) => void;
     onAddTreatment: (roomId: number, treatment: { name: string; duration: number }) => void;
     onOpenInfoModal: (room: TreatmentRoom) => void;
+    treatmentItems: TreatmentItem[];
     // Drag and Drop props
     draggedTreatment: { roomId: number; treatmentId: string } | null;
     onTreatmentDragStart: (roomId: number, treatmentId: string) => void;
     onTreatmentDragEnd: () => void;
     onTreatmentDrop: (targetRoomId: number, targetTreatmentId: string) => void;
-}> = ({ 
+}> = ({
     room, onStart, onPause, onComplete, onReset, onTimeChange, onDeleteTreatment,
-    onFinishSession, onReturnToWaiting, onClean, onFinishCleaning, onDrop, onAddTreatment, onOpenInfoModal,
-    draggedTreatment, onTreatmentDragStart, onTreatmentDragEnd, onTreatmentDrop 
+    onFinishSession, onReturnToWaiting, onClean, onFinishCleaning, onDrop, onAddTreatment, onOpenInfoModal, treatmentItems,
+    draggedTreatment, onTreatmentDragStart, onTreatmentDragEnd, onTreatmentDrop
 }) => {
     const [isDragOver, setIsDragOver] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -283,8 +283,10 @@ const TreatmentBedCard: React.FC<{
     const availableTreatmentsToAdd = useMemo(() => {
         if (room.status !== RoomStatus.IN_USE) return [];
         const existingTreatmentNames = new Set(room.sessionTreatments.map(tx => tx.name));
-        return AVAILABLE_TREATMENTS.filter(t => !existingTreatmentNames.has(t.name));
-    }, [room.status, room.sessionTreatments]);
+        return treatmentItems
+            .filter(t => !existingTreatmentNames.has(t.name))
+            .map(t => ({ name: t.name, duration: t.defaultDuration }));
+    }, [room.status, room.sessionTreatments, treatmentItems]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -503,10 +505,11 @@ interface TreatmentViewProps {
     onMovePatientToPayment: (patientId: number) => void;
     allPatients: Patient[];
     onUpdatePatientDefaultTreatments: (patientId: number, treatments: DefaultTreatment[]) => void;
+    treatmentItems: TreatmentItem[];
 }
 
 const TreatmentView: React.FC<TreatmentViewProps> = ({
-    treatmentRooms, waitingList, onNavigateBack, onUpdateRooms, onSaveRoomToDB, onUpdateWaitingList, onMovePatientToPayment, allPatients, onUpdatePatientDefaultTreatments
+    treatmentRooms, waitingList, onNavigateBack, onUpdateRooms, onSaveRoomToDB, onUpdateWaitingList, onMovePatientToPayment, allPatients, onUpdatePatientDefaultTreatments, treatmentItems
 }) => {
     const [draggedTreatment, setDraggedTreatment] = useState<{ roomId: number; treatmentId: string } | null>(null);
     const [infoModalRoom, setInfoModalRoom] = useState<TreatmentRoom | null>(null);
@@ -540,7 +543,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                 const treatmentsToApply =
                     (patient.defaultTreatments && patient.defaultTreatments.length > 0)
                     ? patient.defaultTreatments
-                    : BASIC_TREATMENTS;
+                    : treatmentItems.slice(0, 3).map(ti => ({ name: ti.name, duration: ti.defaultDuration }));
 
                 const sessionTreatments = treatmentsToApply.map((dt, index) => {
                     const newTreatment = {
@@ -549,7 +552,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                         duration: dt.duration,
                         status: 'pending' as const,
                         elapsedSeconds: 0,
-                        memo: dt.memo,
+                        memo: 'memo' in dt ? dt.memo : undefined,
                     };
                     console.log('🆕 새 치료 항목 생성:', newTreatment);
                     return newTreatment;
@@ -865,7 +868,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-1 h-full auto-rows-fr">
                 {treatmentRooms.map(room => (
                   <React.Fragment key={room.id}>
-                    <TreatmentBedCard room={room} 
+                    <TreatmentBedCard room={room}
                       onStart={(txId) => handleTreatmentAction(room.id, txId, 'start')}
                       onPause={(txId) => handleTreatmentAction(room.id, txId, 'pause')}
                       onComplete={(txId) => handleTreatmentAction(room.id, txId, 'complete')}
@@ -879,6 +882,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                       onDrop={(patientId) => handlePatientDropOnBed(patientId, room.id)}
                       onAddTreatment={handleAddTreatment}
                       onOpenInfoModal={handleOpenInfoModal}
+                      treatmentItems={treatmentItems}
                       draggedTreatment={draggedTreatment}
                       onTreatmentDragStart={handleTreatmentDragStart}
                       onTreatmentDragEnd={handleTreatmentDragEnd}
@@ -896,6 +900,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                   onClose={() => setInfoModalRoom(null)}
                   room={infoModalRoom}
                   onSave={handleSaveTreatmentInfo}
+                  treatmentItems={treatmentItems}
               />
           )}
            {hoveredPatient && (
