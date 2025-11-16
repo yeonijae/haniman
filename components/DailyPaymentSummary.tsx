@@ -135,10 +135,10 @@ const DailyPaymentSummary: React.FC<DailyPaymentSummaryProps> = ({ completedPaym
                     {sortedPayments.length > 0 ? (
                         sortedPayments.map((p, index) => (
                             <div key={p.id} className="grid grid-cols-9 gap-3 px-4 py-3 items-start">
-                                <div className="col-span-1 text-sm font-bold text-gray-700 text-center pt-1">{index + 1}</div>
-                                <div className="col-span-1 text-sm text-gray-900 pt-1">{new Date(p.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</div>
-                                <div className="col-span-1 text-sm font-semibold text-gray-900 pt-1">{p.patientName}</div>
-                                <div className="col-span-3 text-xs text-gray-600 space-y-1">
+                                <div className="col-span-1 text-base font-bold text-gray-700 text-center pt-1">{index + 1}</div>
+                                <div className="col-span-1 text-base text-gray-900 pt-1">{new Date(p.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</div>
+                                <div className="col-span-1 text-base font-semibold text-gray-900 pt-1">{p.patientName}</div>
+                                <div className="col-span-3 text-sm text-gray-600 space-y-1">
                                     {p.treatmentItems.map(item => (
                                         <div key={item.id}>
                                             <div className="flex justify-between items-center">
@@ -159,7 +159,7 @@ const DailyPaymentSummary: React.FC<DailyPaymentSummaryProps> = ({ completedPaym
                                         </div>
                                     ))}
                                 </div>
-                                <div className="col-span-1 text-xs text-gray-500 pt-1">
+                                <div className="col-span-1 text-sm text-gray-600 pt-1">
                                     {p.paymentMethods.length > 0 ? (
                                         p.paymentMethods.map((pm, index) => (
                                             <div key={index} className="flex justify-between">
@@ -171,8 +171,8 @@ const DailyPaymentSummary: React.FC<DailyPaymentSummaryProps> = ({ completedPaym
                                         <span className="text-gray-400">결제 없음</span>
                                     )}
                                 </div>
-                                <div className="col-span-1 text-right text-sm font-medium text-gray-900 pt-1">{p.totalAmount.toLocaleString()}원</div>
-                                <div className={`col-span-1 text-right text-sm font-bold pt-1 ${p.remainingAmount > 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                                <div className="col-span-1 text-right text-base font-medium text-gray-900 pt-1">{p.totalAmount.toLocaleString()}원</div>
+                                <div className={`col-span-1 text-right text-base font-bold pt-1 ${p.remainingAmount > 0 ? 'text-red-600' : 'text-gray-500'}`}>
                                     {p.remainingAmount.toLocaleString()}원
                                 </div>
                             </div>
