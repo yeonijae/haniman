@@ -5,20 +5,6 @@ interface DailyPaymentSummaryProps {
     completedPayments: CompletedPayment[];
 }
 
-const SummaryCard: React.FC<{ title: string; amount: number; colorClass: string; icon: string }> = ({ title, amount, colorClass, icon }) => (
-    <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-current" style={{ color: colorClass }}>
-        <div className="flex items-center">
-            <div className="p-2 bg-gray-100 rounded-full mr-4">
-                <i className={`${icon} text-lg`} style={{ color: colorClass }}></i>
-            </div>
-            <div>
-                <p className="text-sm font-medium text-gray-500">{title}</p>
-                <p className="text-2xl font-bold">{amount.toLocaleString()}원</p>
-            </div>
-        </div>
-    </div>
-);
-
 const getPaymentMethodName = (method: PaymentMethod) => {
     switch(method) {
         case 'card': return '카드';
@@ -105,31 +91,38 @@ const DailyPaymentSummary: React.FC<DailyPaymentSummaryProps> = ({ completedPaym
             </div>
 
             {/* Summary Section */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <SummaryCard title="총 매출" amount={summary.totalRevenue} colorClass="#1E3A8A" icon="fa-solid fa-chart-pie" />
-                <SummaryCard title="총 수납액" amount={summary.totalPaid} colorClass="#10B981" icon="fa-solid fa-hand-holding-dollar" />
-                <SummaryCard title="총 미수금" amount={summary.totalUnpaid} colorClass="#EF4444" icon="fa-solid fa-file-invoice-dollar" />
-                
-                <div className="bg-white p-4 rounded-lg shadow-sm flex flex-col justify-center space-y-2">
-                    <div className="flex justify-between text-sm">
-                        <span className="font-medium text-gray-600">카드</span>
-                        <span className="font-bold">{summary.totalsByMethod.card.toLocaleString()}원</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                        <span className="font-medium text-gray-600">현금</span>
-                        <span className="font-bold">{summary.totalsByMethod.cash.toLocaleString()}원</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                        <span className="font-medium text-gray-600">계좌이체</span>
-                        <span className="font-bold">{summary.totalsByMethod.transfer.toLocaleString()}원</span>
-                    </div>
+            <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+                <div className="bg-white p-3 rounded-lg shadow-sm border-l-4 border-blue-900">
+                    <p className="text-xs font-medium text-gray-500">총 매출</p>
+                    <p className="text-xl font-bold text-blue-900 mt-1">{summary.totalRevenue.toLocaleString()}원</p>
+                </div>
+                <div className="bg-white p-3 rounded-lg shadow-sm border-l-4 border-green-600">
+                    <p className="text-xs font-medium text-gray-500">수납액</p>
+                    <p className="text-xl font-bold text-green-600 mt-1">{summary.totalPaid.toLocaleString()}원</p>
+                </div>
+                <div className="bg-white p-3 rounded-lg shadow-sm border-l-4 border-red-600">
+                    <p className="text-xs font-medium text-gray-500">미수금</p>
+                    <p className="text-xl font-bold text-red-600 mt-1">{summary.totalUnpaid.toLocaleString()}원</p>
+                </div>
+                <div className="bg-white p-3 rounded-lg shadow-sm border-l-4 border-purple-600">
+                    <p className="text-xs font-medium text-gray-500">카드</p>
+                    <p className="text-xl font-bold text-purple-600 mt-1">{summary.totalsByMethod.card.toLocaleString()}원</p>
+                </div>
+                <div className="bg-white p-3 rounded-lg shadow-sm border-l-4 border-orange-600">
+                    <p className="text-xs font-medium text-gray-500">현금</p>
+                    <p className="text-xl font-bold text-orange-600 mt-1">{summary.totalsByMethod.cash.toLocaleString()}원</p>
+                </div>
+                <div className="bg-white p-3 rounded-lg shadow-sm border-l-4 border-teal-600">
+                    <p className="text-xs font-medium text-gray-500">계좌이체</p>
+                    <p className="text-xl font-bold text-teal-600 mt-1">{summary.totalsByMethod.transfer.toLocaleString()}원</p>
                 </div>
             </div>
 
             {/* List Section */}
             <div className="flex-grow overflow-y-auto border border-gray-200 rounded-lg bg-white">
                 <div className="sticky top-0 bg-gray-50 z-10">
-                    <div className="grid grid-cols-8 gap-4 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <div className="grid grid-cols-9 gap-3 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <div className="col-span-1 text-center">번호</div>
                         <div className="col-span-1">시간</div>
                         <div className="col-span-1">환자명</div>
                         <div className="col-span-3">치료 항목</div>
@@ -140,8 +133,9 @@ const DailyPaymentSummary: React.FC<DailyPaymentSummaryProps> = ({ completedPaym
                 </div>
                 <div className="divide-y divide-gray-200">
                     {sortedPayments.length > 0 ? (
-                        sortedPayments.map(p => (
-                            <div key={p.id} className="grid grid-cols-8 gap-4 px-4 py-3 items-start">
+                        sortedPayments.map((p, index) => (
+                            <div key={p.id} className="grid grid-cols-9 gap-3 px-4 py-3 items-start">
+                                <div className="col-span-1 text-sm font-bold text-gray-700 text-center pt-1">{index + 1}</div>
                                 <div className="col-span-1 text-sm text-gray-900 pt-1">{new Date(p.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</div>
                                 <div className="col-span-1 text-sm font-semibold text-gray-900 pt-1">{p.patientName}</div>
                                 <div className="col-span-3 text-xs text-gray-600 space-y-1">
