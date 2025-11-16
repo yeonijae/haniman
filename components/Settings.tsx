@@ -26,9 +26,11 @@ interface SettingsProps {
     medicalStaff: MedicalStaff[];
     updateMedicalStaff: (staff: MedicalStaff) => void;
     addMedicalStaff: (staff: Omit<MedicalStaff, 'id'>) => void;
+    deleteMedicalStaff: (staffId: number) => void;
     staff: Staff[];
     updateStaff: (staff: Staff) => void;
     addStaff: (staff: Omit<Staff, 'id'>) => void;
+    deleteStaff: (staffId: number) => void;
     uncoveredCategories: UncoveredCategories;
     updateUncoveredCategories: (categories: UncoveredCategories) => void;
 }
@@ -1166,8 +1168,6 @@ const UncoveredManagement: React.FC<{
                         </h3>
                         <input
                             type="text"
-                            id="newCategoryName"
-                            name="newCategoryName"
                             value={newItemName}
                             onChange={(e) => setNewItemName(e.target.value)}
                             className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-clinic-secondary focus:border-clinic-secondary sm:text-sm"
@@ -1202,8 +1202,6 @@ const UncoveredManagement: React.FC<{
                         <h3 className="text-xl font-semibold mb-4">이름 수정</h3>
                         <input
                             type="text"
-                            id="editCategoryName"
-                            name="editCategoryName"
                             value={editedItemName}
                             onChange={(e) => setEditedItemName(e.target.value)}
                             className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-clinic-secondary focus:border-clinic-secondary sm:text-sm"
@@ -1274,8 +1272,8 @@ const UncoveredManagement: React.FC<{
 
 const Settings: React.FC<SettingsProps> = ({
     addBulkPatients, allPatients, deletePatient, deletedPatients, restorePatient,
-    medicalStaff, updateMedicalStaff, addMedicalStaff,
-    staff, updateStaff, addStaff,
+    medicalStaff, updateMedicalStaff, addMedicalStaff, deleteMedicalStaff,
+    staff, updateStaff, addStaff, deleteStaff,
     uncoveredCategories, updateUncoveredCategories
 }) => {
     const [isLoading, setIsLoading] = useState(false);
@@ -1585,4 +1583,4 @@ const Settings: React.FC<SettingsProps> = ({
     );
 };
 
-export default Settings;
+export default React.memo(Settings);
