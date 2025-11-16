@@ -264,7 +264,6 @@ const App: React.FC = () => {
       patients.addToTreatmentList(patient, '진료완료');
     } else {
       await paymentsHook.createPayment(patient, '진료비');
-      alert(`${patient.name}님을 수납 대기 목록으로 이동했습니다.`);
     }
   };
 
@@ -316,7 +315,6 @@ const App: React.FC = () => {
     }
 
     await paymentsHook.createPayment(patientToMove, '치료비');
-    alert(`${patientToMove.name}님을 수납 대기 목록으로 이동했습니다.`);
   };
 
   const handleMovePatientFromPaymentToWaiting = (paymentId: number, destination: 'consultation' | 'treatment') => {
