@@ -81,6 +81,18 @@ const Header: React.FC<HeaderProps> = ({
       <div className="flex items-center space-x-4">
         <nav className="flex items-center space-x-2">
           <Link
+            to="/"
+            className={`flex flex-col items-center justify-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 w-20 ${
+              location.pathname === '/'
+                ? 'bg-clinic-primary text-white'
+                : 'text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary'
+            }`}
+          >
+            <i className='fa-solid fa-house text-xl mb-1'></i>
+            <span>대시보드</span>
+          </Link>
+
+          <Link
             to="/treatment"
             className={`flex flex-col items-center justify-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 w-20 ${
               location.pathname === '/treatment'
