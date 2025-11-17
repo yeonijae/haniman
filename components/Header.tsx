@@ -67,34 +67,34 @@ const Header: React.FC<HeaderProps> = ({
   ];
 
   return (
-    <header className="bg-clinic-surface shadow-md flex items-center justify-between p-4 flex-shrink-0">
+    <header className="bg-clinic-surface shadow-md flex items-center justify-between px-4 py-2 flex-shrink-0">
       <div
         className="flex items-center cursor-pointer"
         onClick={() => onNavigate('dashboard')}
         role="button"
         aria-label="메인 대시보드로 이동"
       >
-        <i className="fas fa-clinic-medical text-3xl text-clinic-primary mr-3"></i>
+        <i className="fas fa-clinic-medical text-2xl text-clinic-primary mr-2"></i>
         <div className="flex flex-col">
-          <h1 className="text-2xl font-bold text-clinic-primary">운영 관리 시스템</h1>
+          <h1 className="text-lg font-bold text-clinic-primary">운영 관리 시스템</h1>
           <p className="text-xs text-gray-400 -mt-0.5">연이재한의원</p>
         </div>
       </div>
       <div className="flex items-center space-x-4">
-        <nav className="flex items-center space-x-2">
+        <nav className="flex items-center space-x-1">
           <button
             onClick={() => onNavigate('treatment')}
-            className="flex flex-col items-center justify-center px-3 py-2 text-sm font-medium text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary rounded-lg transition-colors duration-200 w-20"
+            className="flex flex-col items-center justify-center px-2 py-1.5 text-xs font-medium text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary rounded-lg transition-colors duration-200 w-16"
           >
-            <i className='fa-solid fa-bed-pulse text-xl mb-1'></i>
+            <i className='fa-solid fa-bed-pulse text-lg mb-0.5'></i>
             <span>치료실</span>
           </button>
 
           <button
             onClick={() => onNavigate('acting')}
-            className="flex flex-col items-center justify-center px-3 py-2 text-sm font-medium text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary rounded-lg transition-colors duration-200 w-20"
+            className="flex flex-col items-center justify-center px-2 py-1.5 text-xs font-medium text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary rounded-lg transition-colors duration-200 w-16"
           >
-            <i className='fa-solid fa-person-running text-xl mb-1'></i>
+            <i className='fa-solid fa-person-running text-lg mb-0.5'></i>
             <span>액팅관리</span>
           </button>
 
@@ -102,9 +102,9 @@ const Header: React.FC<HeaderProps> = ({
             <button
               key={btn.label}
               onClick={() => onOpenModal(btn.modalType, btn.modalTitle, btn.wide)}
-              className="flex flex-col items-center justify-center px-3 py-2 text-sm font-medium text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary rounded-lg transition-colors duration-200 w-20"
+              className="flex flex-col items-center justify-center px-2 py-1.5 text-xs font-medium text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary rounded-lg transition-colors duration-200 w-16"
             >
-              <i className={`${btn.icon} text-xl mb-1`}></i>
+              <i className={`${btn.icon} text-lg mb-0.5`}></i>
               <span>{btn.label}</span>
             </button>
           ))}
