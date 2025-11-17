@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import Header, { ModalType, ViewType } from './components/Header';
+import { Routes, Route, useNavigate } from 'react-router-dom';
+import Header, { ModalType } from './components/Header';
 import ReservationStatus from './components/ReservationStatus';
 import ConsultationStatus from './components/ConsultationStatus';
 import WaitingList from './components/WaitingList';
@@ -65,8 +66,10 @@ const App: React.FC = () => {
   // Consultation Rooms
   const consultationRoomsHook = useConsultationRooms({ medicalStaff: staffHook.medicalStaff });
 
-  // View and Modal State
-  const [currentView, setCurrentView] = useState<ViewType>('dashboard');
+  // Navigation
+  const navigate = useNavigate();
+
+  // Modal State
   const [modalType, setModalType] = useState<ModalType | null>(null);
   const [modalTitle, setModalTitle] = useState<string>('');
   const [isModalWide, setIsModalWide] = useState<boolean>(false);
@@ -464,14 +467,14 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen text-clinic-text-primary overflow-hidden">
-      {currentView === 'dashboard' && (
-        <>
-          <Header
-            onOpenModal={openModal}
-            onNavigate={setCurrentView}
-            currentUser={currentUser}
-            onLogout={handleLogout}
-          />
+      <Header
+        onOpenModal={openModal}
+        currentUser={currentUser}
+        onLogout={handleLogout}
+      />
+
+      <Routes>
+        <Route path="/" element={
           <main className="flex-grow p-4 lg:p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4 lg:gap-6 min-h-0">
             {/* 1. 예약현황 */}
             <div className="xl:col-span-1 flex flex-col min-h-0">
@@ -528,37 +531,37 @@ const App: React.FC = () => {
               />
             </div>
           </main>
-        </>
-      )}
+        } />
 
-      {currentView === 'treatment' && (
-        <TreatmentView
-          treatmentRooms={treatmentRoomsHook.treatmentRooms}
-          waitingList={patients.treatmentWaitingList}
-          onNavigateBack={() => setCurrentView('dashboard')}
-          onUpdateRooms={treatmentRoomsHook.handleUpdateTreatmentRooms}
-          onSaveRoomToDB={treatmentRoomsHook.saveTreatmentRoomToDB}
-          onUpdateWaitingList={patients.setTreatmentWaitingList}
-          onMovePatientToPayment={(id) => handleMovePatientToPayment(id, 'treatment_room')}
-          allPatients={patients.allPatients}
-          onUpdatePatientDefaultTreatments={patients.updatePatientDefaultTreatments}
-          treatmentItems={treatmentItemsHook.treatmentItems}
-        />
-      )}
+        <Route path="/treatment" element={
+          <TreatmentView
+            treatmentRooms={treatmentRoomsHook.treatmentRooms}
+            waitingList={patients.treatmentWaitingList}
+            onNavigateBack={() => navigate('/')}
+            onUpdateRooms={treatmentRoomsHook.handleUpdateTreatmentRooms}
+            onSaveRoomToDB={treatmentRoomsHook.saveTreatmentRoomToDB}
+            onUpdateWaitingList={patients.setTreatmentWaitingList}
+            onMovePatientToPayment={(id) => handleMovePatientToPayment(id, 'treatment_room')}
+            allPatients={patients.allPatients}
+            onUpdatePatientDefaultTreatments={patients.updatePatientDefaultTreatments}
+            treatmentItems={treatmentItemsHook.treatmentItems}
+          />
+        } />
 
-      {currentView === 'acting' && (
-        <ActingManagementView
-          actingQueues={actingQueuesHook.actingQueues}
-          onQueueUpdate={actingQueuesHook.setActingQueues}
-          onNavigateBack={() => setCurrentView('dashboard')}
-          treatmentRooms={treatmentRoomsHook.treatmentRooms}
-          allPatients={patients.allPatients}
-          onCompleteActing={handleCompleteActing}
-          onAddActing={actingQueuesHook.addActing}
-          onDeleteActing={actingQueuesHook.deleteActing}
-          onEditActing={handleEditActing}
-        />
-      )}
+        <Route path="/acting" element={
+          <ActingManagementView
+            actingQueues={actingQueuesHook.actingQueues}
+            onQueueUpdate={actingQueuesHook.setActingQueues}
+            onNavigateBack={() => navigate('/')}
+            treatmentRooms={treatmentRoomsHook.treatmentRooms}
+            allPatients={patients.allPatients}
+            onCompleteActing={handleCompleteActing}
+            onAddActing={actingQueuesHook.addActing}
+            onDeleteActing={actingQueuesHook.deleteActing}
+            onEditActing={handleEditActing}
+          />
+        } />
+      </Routes>
 
       <Modal isOpen={modalType !== null} onClose={closeModal} title={modalTitle} wide={isModalWide}>
         {renderModalContent()}

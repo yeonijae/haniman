@@ -1,12 +1,11 @@
 import React from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { User } from '../types';
 
 export type ModalType = 'newPatient' | 'reservation' | 'patientSearch' | 'stats' | 'settings' | 'payment' | 'dailyPayments' | 'editActing';
-export type ViewType = 'dashboard' | 'treatment' | 'acting';
 
 interface HeaderProps {
   onOpenModal: (type: ModalType, title: string, wide?: boolean) => void;
-  onNavigate: (view: ViewType) => void;
   currentUser: User;
   onLogout: () => void;
 }
@@ -19,12 +18,12 @@ interface ButtonConfig {
   wide?: boolean;
 }
 
-const Header: React.FC<HeaderProps> = ({ 
+const Header: React.FC<HeaderProps> = ({
     onOpenModal,
-    onNavigate,
     currentUser,
     onLogout,
 }) => {
+  const location = useLocation();
   const buttons: ButtonConfig[] = [
     { 
       icon: 'fa-solid fa-user-plus', 
@@ -68,10 +67,9 @@ const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="bg-clinic-surface shadow-md flex items-center justify-between px-4 py-2 flex-shrink-0">
-      <div
+      <Link
+        to="/"
         className="flex items-center cursor-pointer"
-        onClick={() => onNavigate('dashboard')}
-        role="button"
         aria-label="메인 대시보드로 이동"
       >
         <i className="fas fa-clinic-medical text-3xl text-clinic-primary mr-3"></i>
@@ -79,24 +77,32 @@ const Header: React.FC<HeaderProps> = ({
           <h1 className="text-2xl font-bold text-clinic-primary">운영 관리 시스템</h1>
           <p className="text-xs text-gray-400 -mt-0.5">연이재한의원</p>
         </div>
-      </div>
+      </Link>
       <div className="flex items-center space-x-4">
         <nav className="flex items-center space-x-2">
-          <button
-            onClick={() => onNavigate('treatment')}
-            className="flex flex-col items-center justify-center px-3 py-2 text-sm font-medium text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary rounded-lg transition-colors duration-200 w-20"
+          <Link
+            to="/treatment"
+            className={`flex flex-col items-center justify-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 w-20 ${
+              location.pathname === '/treatment'
+                ? 'bg-clinic-primary text-white'
+                : 'text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary'
+            }`}
           >
             <i className='fa-solid fa-bed-pulse text-xl mb-1'></i>
             <span>치료실</span>
-          </button>
+          </Link>
 
-          <button
-            onClick={() => onNavigate('acting')}
-            className="flex flex-col items-center justify-center px-3 py-2 text-sm font-medium text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary rounded-lg transition-colors duration-200 w-20"
+          <Link
+            to="/acting"
+            className={`flex flex-col items-center justify-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 w-20 ${
+              location.pathname === '/acting'
+                ? 'bg-clinic-primary text-white'
+                : 'text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary'
+            }`}
           >
             <i className='fa-solid fa-person-running text-xl mb-1'></i>
             <span>액팅관리</span>
-          </button>
+          </Link>
 
           {buttons.map((btn) => (
             <button
